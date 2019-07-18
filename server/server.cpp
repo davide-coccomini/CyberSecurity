@@ -44,24 +44,120 @@ class Server {
 	EVP_PKEY* privateKey;
 
 	X509_CRL* crl;
-
 	X509* serverCertification;
 	X509* CACertification;
+	
+	X509_STORE* store:
 
 	public:
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/	
 	Server(){
-		//loadCertificates();
+		loadCertificates();
+		createStore();
 		loadClients();
-		//createStore();
 	}
-	void loadCertificates(){ // Load certificates
-		string fileName = "certificates/server_key.pem";
-		FILE * privateKeyFile = fopen(fileName.c_str(), "r");	
-		if(!privateKeyFile){
+	
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/	
+	void socketActivation(){
+		socketFd = socket(AF_INET, SOCK_STREAM, 0);
+		
+		memset(&serverAddress, 0, sizeof(serverAddress));
+		serverAddress.sin_family = AF_INET;
+		serverAddress.sin_port = htons(SERVER_PORT); //Da vedere
+		serverAddress.sin_addr.s_addr = INADDR_ANY;
+		
+		int ret = bind(socketFd, (sockaddr*)&serverAddress, sizeof(serverAddress));
+		if (ret < 0) {
+			cerr<<"ERROR: error in binding the socket"<<endl;
+			close(socketFd);
+			exit(1);
+		}
+
+		ret = listen(socketFd, 10);
+		if(ret < 0) {
+			cerr<<"ERROR: error in listening" <<endl;
+			close(socket_fd);
+			exit(1);
+		}
+		cout<<"Server is listening to port " << SERVER_PORT <<endl;	
+	}
+	
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/	
+	void createStore(){
+		store = X509_STORE_new();
+		if(!store) { 
+			cerr << "ERROR: store not allocated"<<endl;; 
+			exit(1); 
+		}
+		
+		int ret = X509_STORE_add_cert(store, CACertification);
+		if(ret != 1) { 
+			cerr << "ERROR: error in adding CA certification in the store"<<endl;
+			exit(1); 
+		}
+		
+		ret = X509_STORE_add_crl(store, crl);
+		if(ret != 1) { 
+			cerr << "ERROR: error in adding CRL in the store"<<endl;
+			exit(1); 
+		}
+		
+		ret = X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK);
+		if(ret != 1) { 
+			cerr << "ERROR: error in setting flag in the store"<<endl;
+			exit(1);
+		}
+	}
+	
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+	void loadCertificates(){ 
+	
+		//apertura file
+		string fileName = "certificates/serverCertificate.pem";
+		FILE * certFile = fopen(fileName.c_str(), "r");	
+		if(!certFile){
 			cerr << "Error while opening file "<< fileName << endl;
 			exit(1);
 		}	
+		//lettura certificato
+		serverCertification = PEM_read_X509(certFile, NULL, NULL, NULL);
+		fclose(certFile);
+		if(!serverCertification) {
+			cerr << "Error: PEM_read_X509 returned NULL\n"; //modificare cout
+			exit(1);
+		}
+		
+		//apertura file
+		fileName = "certificates/CACertificate.pem";
+		certFile = fopen(fileName.c_str(), "r");	
+		if(!certFile){
+			cerr << "Error while opening file "<< fileName << endl;
+			exit(1);
+		}	
+		//lettura certificato
+		CACertification = PEM_read_X509(certFile, NULL, NULL, NULL);
+		fclose(certFile);
+		if(!CACertification) {
+			cerr << "Error: PEM_read_X509 returned NULL\n";//modificare cout
+			exit(1);
+		}
+		
+		fileName = "certificates/CRL170519.pem";//Da modificare
+		certFile = fopen(fileName.c_str(), "r");
+		if(!certFile){ 
+			cerr << "Error while opening file "<< fileName << endl;
+			exit(1); 
+		}
+		crl = PEM_read_X509_CRL(certFile, NULL, NULL, NULL);
+		fclose(certFile);
+		if(!crl){ 
+			cerr << "Error: PEM_read_X509_CRL returned NULL\n"; //modificare cout
+			exit(1);
+		}
+		
 	}
+	
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/		
 	void loadClients(){ // Read and save the authorized clients
 		ifstream f("authorizedClients.txt");
 		if(!f.is_open()){
@@ -74,27 +170,61 @@ class Server {
 			authorizedClients.push_back(client);
 		}
 	}
-	void init(){ // Initialize the connection socket and start listening
-		socketFd = socket(AF_INET, SOCK_STREAM, 0);
-		memset(&serverAddress, 0, sizeof(serverAddress);
-		serverAddress.sin_family = AF_INET;
-		serverAddress.sin_port = htons(SERVER_PORT);
-		serverAddress.sin_addr.s_addr = INADDR_ANY;
+
+
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+	int keySharing(){
 		
-		int ret = bind(socketFd, (sockaddr*)&serverAddress, sizeof(serverAddress));
-		if(ret < 0){
-			cerr << "Error while binding the socket" << endl;
-			close(socketFd);
-			exit(1);
-		}
-		ret = listen(socketFd, 15);
-		if(ret < 0){
-			cerr<<"Error while listening"<<endl;
-			close(socketFd);
-			exit(1);	
-		}
-		cout << "Server is now listening on " << SERVER_PORT << endl; 
+		//caricamento chiave privata
+		
+		//caricamento sessione dh
+		
+		//generazione coppia chiavi
+		
+		//M1: invio Ya
+		
+		//ricezione M2
+		
+		//verifica certificato client tramite store
+		
+		//verifica se il client è legittimato a connettersi
+		
+		//calcolo g_ab
+		
+		//decripta M2.2 con g_ab
+		
+		//verifica la firma
+		
+		//invio M3
+		
 	}
+
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+void loadPrivateKey(){
+	string fileName = "ertificates/server_key.pem";
+	FILE* fileK = fopen(fileName.c_str(), "r");
+	if(!fileK){ 
+		cerr << "ERROR: Error while opening server key file"<<endl; 
+		exit(1); 
+	}
+	
+	privateKey = = PEM_read_PrivateKey(fileK, NULL, NULL, NULL);
+	fclose(fileK);
+	if(!privateKey){ 
+		cerr << "ERROR: error in reading private key"<<endl; 
+		exit(1); 
+	}
+}
+
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/	
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+	
+	
+
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/		
 	void initFileList(){ // Read and save the files on the server
 		files.clear();
 		string dir = "server/files";
@@ -103,13 +233,17 @@ class Server {
 			files.push_back(f);
 		}
 	}
+	
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/	
 	void getFiles(){ // Print the files on the server
 		string dir = "server/files";
 		cout << "Files on the server:"<<endl;
 		for(const auto & entry : fs::directory_iterator(dir))
 			cout << "- " << string(entry.path().filename()) << "\t "<< fs::file_size(entry.path()) << endl;
 
-	}	
+	}
+	
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/		
 	void executeCommand(){ // Manage the received command
 		while(1){
 			/*
@@ -182,7 +316,9 @@ class Server {
 
 		}
 
-	} 
+	}
+	
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------*/	 
 	void keyGeneration(unsigned char *g_ab, int length){} // Generate keys
 	int keySharing(){} // Implements the sharing of the keys for station-to-station
 	void resetKeys(){} // Delete all the keys generated
@@ -192,9 +328,8 @@ class Server {
 int main(){
 	system("clear");
 	Server s;
-	cout << "The server is running" <<endl;
-	s.init();
-	s.listen();
+	cout << "The server is ready" <<endl;
+	//s.listen();
 	return 0;
 
 }
