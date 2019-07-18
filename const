@@ -1,5 +1,6 @@
 #define SERVER_PORT 4242;
-#define MAX_FILENAME_SIZE 64;
+#define MAX_NAME_SIZE 64;
 #define SIZE_Y_DH 384;
 #define MAX_COUNTER 10000000;
 #define BUFFER_SIZE 512;
+
