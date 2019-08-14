@@ -186,9 +186,39 @@ int sendIV(int socket){
 }
 
 string receiveString(int socket){
+	int done, size, length = 0;
 	string s;
-	uint32_t size = receiveSize(socket, &e);
+	uint32_t size = receiveSize(socket);
+	
+	int done = getIV(socket);
 
+	if(done != 0){
+		cerr << "Error sending IV" << endl;
+		return s;
+	}
+	unsigned char plainText[MAX_NAME_SIZE+blockSize];
+	unsigned char cipherText[MAX_NAME_SIZE+blockSize];
+
+	size = ((length/blockSize)+1)*blockSize;
+
+	done = recv(socket, (void*)&cipherText, size, MSG_WAITALL);
+	if(done <= 0 || done < (int)(size)){
+		cerr << "Error receiving size" << endl;
+		return s;
+	}
+
+	done = checkDigest(socket, cipherText, size);
+	
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new(); // Inizializzo un contesto per decriptare il messaggio
+	EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
+	EVP_DecryptUpdate(ctx, plainText, &length, cipherText, size);
+	EVP_DecryptFinal(ctx, plainText+length, &length);
+	EVP_CIPHER_CTX_free(ctx);
+
+	s = string((char*)plainText);
+
+	explicit_bzero(plainText, MAX_FILENAME_SIZE+blockSize);
+	return s;
 }
 
 
@@ -218,8 +248,37 @@ uint32_t receiveSize(int socket){
 	int length = 0;
 	EVP_CIPHER_CTX *ctx = 
 }
-int checkDigest(){
-	
+int checkDigest(int socket, unsigned char* message, int length){
+	int done;
+	unsigned char digest[hashSize];
+	unsigned char receivedDigest[hashSize];
+	unsigned char bufferCounter[sizeof(size_t) + length];
+
+	// Get digest
+
+	done = recv(socket, (void*)&receivedDigest, hashSize);
+	if(done <= 0 || done < (int)(hashSize)){
+		cerr << "Error receiving counter" << endl;
+		return -1;
+	}
+	memcpy(bufferCounter, &counter, sizeof(size_t));
+	memcpy(bufferCounter + sizeof(size_t), message, length);
+
+	HMAC_CTX* ctx = HMAC_CTX_new();
+	HMAC_Init_ex(ctx, authenticationKey, authenticationKeySize, md, NULL);
+	HMAC_Update(ctx, bufferCounter, sizeof(size_t) + length);
+	HMAC_Final(ctx, digest, (unsigned int*)&hashSize);
+	HMAC_CTX_free(ctx);
+
+	// Checking if digest is correct
+
+	done = CRYPTO_memcmp(digest, receivedDigest, hashSize);
+	if(done != 0){
+		cerr << "The received digest is wrong" << endl;
+		return -1;
+	}
+	counter++;
+	return 0;
 }
 int receiveIV(int socket){
 	int done;	
@@ -264,9 +323,165 @@ int receiveIV(int socket){
 
 	return 0;
 }
+int receiveFile(int socket, string file){
+	int done;
+	uint32_t fullSize = 0;
+	ofstream os;
+	os.open(file);
 
+	if(os){
+		done = getIV(socket);
+		if(done < 0){
+			cerr << "Error sending IV" << endl;
+			return -1;
+		}
 
+		EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+		EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
 
+		fullSize = receiveSize(socket);
+		if(length <= 0){ // TO BE CHECKED
+			cerr << "Error receiving size" << endl;
+			fs::remove(fs::path(file));
+			EVP_CIPHER_CTX_free(ctx);
+			return -1;
+		}
+		
+		unsigned char digest[hashSize];
+		unsigned char receivedDigest[hashSize];
+		unsigned char plainText[BUF_SIZE+blockSize];
+		unsigned char cipherText[BUF_SIZE+blockSize];
+		unsigned char cipherTextDigest[BUF_SIZE+hashSize];
+		unsigned char cipherTextCount[BUF_SIZE+sizeof(size_t)];
+
+		int packets = fullSize/BUF_SIZE;
+		int lastSize = fullSize - (BUF_SIZE*packets);
+
+		if(lastSize == 0 && fullSize > 0){
+			packets--;
+		}
+		if(packets > 0){
+			packets += blockSize;
+		}
+		int receivedSizeTemp = ((fullSize/blockSize)+1)*blockSize - (BUF_SIZE*packets);
+
+		unsigned char cipherTextDigestTemp[receivedSizeTemp + hashSize];
+		unsigned char cipherTextCountTemp[receivedSizeTemp + hashSize];
+
+		int length = 0;
+
+		done = getIV(socket);
+		if(done < 0){
+			cerr << "Error sending the IV" << endl;
+			return -1;
+		}
+		for(size_t i=0; i<(size_t)packets; ++i){
+			explicit_bzero(plainText, BUF_SIZE+blockSize);
+			explicit_bzero(cipherText, BUF_SIZE+blockSize);
+			explicit_bzero(digest, hashSize);
+			explicit_bzero(receivedDigest, BUF_SIZE+hashSize);
+			explicit_bzero(cipherTextDigest, BUF_SIZE+hashSize);
+			explicit_bzero(cipherTextCount, BUF_SIZE+hashSize);
+
+			done = receiveFile(socket, (void*)&cipherTextDigest, BUF_SIZE+hashSize, MSG_WAITALL);
+			if(done <= 0 || done < (int)(BUF_SIZE+hash_size)){
+				cerr << "Error receiving file" << endl;
+				fs:remove(fs::path(filename));
+				explicit_bzero(cipherTextDigest, BUF_SIZE+hashSize);
+				EVP_CIPHER_CTX_free(ctx);
+				return -1;
+			}
+			for(size_t i = 0; i<(size_t)hashSize; ++i){
+				receivedDigest[i] = cipherTextDigest[i+BUF_SIZE];
+			}
+			memcpy(cipherTextCount+BUF_SIZE, &counter, sizeof(size_t));
+
+			HMAC_CTX* ctx = HMAC_CTX_new();
+			HMAC_Init_ex(ctx, authenticationKey, authenticationKeySize, md, NULL);
+			HMAC_Update(ctx, cipherTextCount, BUF_SIZE+sizeof(size_t));
+			HMAC_Final(ctx, digest, (unsigned int*)&hashSize);
+			HMAC_CTX_free(ctx);
+
+			done = CRYPTO_memcmp(digest, receivedDigest, hashSize);
+			if(done != 0){
+				cerr << "Error checking digest" << endl;
+				explicit_bzero(plainText, BUF_SIZE+blockSize);
+				explicit_bzero(cipherText, BUF_SIZE+blockSize);
+				explicit_bzero(digest, hashSize);
+				explicit_bzero(receivedDigest, hashSize);
+				explicit_bzero(cipherTextDigest, hashSize);
+				explicit_bzero(receivedDigest, hashSize);
+				EVP_CIPHER_CTX_free(ctx);
+				return -1;
+			}
+			counter++;
+			EVP_DecryptUpdate(ctx, plainText, &length, cipherText, BUF_SIZE);
+			os.write((char*)plainText, length);	
+		}
+		explicit_bzero(plainText, BUF_SIZE+blockSize);
+		explicit_bzero(cipherText, BUF_SIZE+blockSize);
+		explicit_bzero(digest, hashSize);
+		explicit_bzero(receivedDigest, hashSize);
+		explicit_bzero(cipherTextDigest, hashSize);
+		explicit_bzero(receivedDigest, hashSize);
+		explicit_bzero(cipherTextDigestTemp, receivedSizeTemp + hashSize);
+		explicit_bzero(cipherTextCountTemp, receivedSizeTemp+sizeof(size_t));
+
+		done = recv(socket, (void*)&cipherTextDigestTemp, receivedSizeTemp+hashSize, MSG_WAITALL);
+		if(done <= 0 || done < (int)(receivedSizeTemp+hashSize)){
+			cerr << "Error receiving file" << endl;
+			fs::remove(fs::path(file));
+			explicit_bzero(plainText, BUF_SIZE+blockSize);
+			explicit_bzero(cipherText, BUF_SIZE+blockSize);
+			explicit_bzero(cipherTextDigestTemp, receivedSizeTemp+hashSize);
+			EVP_CIPHER_CTX_free(ctx);
+			return -1;
+		}
+
+		unsigned char cipherTextCrypcount[receivedSizeTemp+blockSize]; // !!
+		explicit_bzero(cipherTextCrypcount, receivedSizeTemp+blockSize);
+
+		// Deconcateno
+		for(size_t i=0; i<(size_t)receivedSizeTemp; ++i){
+			cipherTextCountTemp[i] = cipherTextDigestTemp[i];
+			cipherText[i] = cipherTextDigestTemp[i];
+		}
+
+		for(size_t i=0; i<(size_t)hashSize; ++i){
+			receivedDigest[i] = cipherTextDigestTemp[i+receivedSizeTemp];
+		}
+
+		memcpy(cipherTextCountTemp+receivedSizeTemp, &counter, sizeof(size_t));
+
+		HMAC_Init_ex(ctx, authenticationKey, authenticationKeySize, md, NULL);
+		HMAC_Update(ctx, cipherTextCountTemp, receivedSizeTemp+sizeof(size_t));
+		HMAC_FINAL(ctx, digest, (unsigned int*)&hashSize);
+		HMAC_CTX_free(ctx);
+		
+		done = CRYPTO_memcmp(digest, receivedDigest, hashSize);
+		if(done != 0){
+			cerr << "Error checking digest" << endl;
+			explicit_bzero(plainText, BUF_SIZE+blockSize);
+			explicit_bzero(cipherText, BUF_SIZE+blockSize);
+			explicit_bzero(digest, hashSize);
+			explicit_bzero(receivedDigest, hashSize);
+			explicit_bzero(cipherTextDigest, BUF_SIZE+hashSize);
+			explicit_bzero(cipherTextCount, BUF_SIZE+hashSize);
+			explicit_bzero(cipherTextDigestTemp, receivedSizeTemp+hashSize);
+			explicit_bzero(cipherTextCountTemp, receivedSizeTemp+sizeof(size_t));
+			EVP_CIPHER_CTX_free(ctx);
+			return -1;
+		}
+		counter++;
+		EVP_DecryptUdate(ctx, plainText, &length, cipherText, receivedSizeTemp);
+		EVP_DecryptFinal(ctx, plainText+length, &length);
+		os.write((char*)plainText, lastSize);
+		explicit_bzero(plainText, BUF_SIZE+blockSize);
+		EVP_CIPHER_CTX_free(ctx);
+		os.close();
+		return fullSize;
+	}	
+}
 
 
 
