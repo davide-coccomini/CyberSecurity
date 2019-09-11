@@ -111,9 +111,13 @@ public:
             exit(1);
         }
 
+        ret = builtSessionKeys(Kab,BN_num_bytes(p));
+		if(ret < 0){
+			exit(1);
+        }
+
         DH_free(dhSession);
-        BN_free(Ya);
-        //BN_free(Yb); ???
+		BN_free(Ya);
 
         //Firma <Ya,Yb>B
         unsigned char YaConcatYb[2*SIZE_Y_DH];
@@ -129,7 +133,7 @@ public:
 
         EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
         if(!mdctx){
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cout<< "Error: EVP_MD_CTX_new returned NULL"<<endl; //DA RIVEDERE
             exit(1);
@@ -137,7 +141,7 @@ public:
 
         ret = EVP_SignInit(mdctx, md);
         if(ret == 0){
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cerr << "Error: EVP_SignInit returned " << ret << "\n"; //DA RIVEDERE
             exit(1);
@@ -145,7 +149,7 @@ public:
 
         ret = EVP_SignUpdate(mdctx, YaConcatYb, 2*SIZE_Y_DH);
         if(ret == 0){
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cerr << "Error: EVP_SignUpdate returned " << ret << "\n"; //DA RIVEDERE
             exit(1);
@@ -153,7 +157,7 @@ public:
 
         ret = EVP_SignFinal(mdctx, signature, &signatureLen, privateKey);
         if(ret == 0){
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cerr << "Error: EVP_SignFinal returned " << ret << "\n"; //DA RIVEDERE
             exit(1);
@@ -164,7 +168,7 @@ public:
         unsigned char ciphertext[EVP_PKEY_size(privateKey)+blockSize];
         int cipherLen, outLen;
         EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-        EVP_EncryptInit(ctx, EVP_aes_128_ecb(), Kab, NULL);
+        EVP_EncryptInit(ctx, EVP_aes_128_ecb(), Ksec, NULL);
         EVP_EncryptUpdate(ctx, ciphertext, &outLen, signature, EVP_PKEY_size(privateKey));
         cipherLen = outLen;
         EVP_EncryptFinal(ctx, ciphertext+cipherLen, &outLen);
@@ -201,7 +205,7 @@ public:
         int cs=htonl(certSize);
         ret = send(sd, (void*)&cs, sizeof(int), 0);
         if (ret < 0) {
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cerr << "Error sending certificate" <<endl; //DA RIVEDERE
             exit(1);
@@ -210,7 +214,7 @@ public:
         //invio M2
         ret = send(sd, (void*)M2, SIZE_Y_DH+cipherLen+certSize, 0);
         if (ret < 0) {
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cerr << "Error sending M2" <<endl;//DA RIVEDERE
             exit(1);
@@ -234,7 +238,7 @@ public:
 			EVP_PKEY_free(privateKey);
 			cerr << "Error receiving M3"<<endl;
             exit(1);
-
+        }
         certBuf=(unsigned char*)malloc(certSize);
         for(int i=0; i<(EVP_PKEY_size(privateKey)+(int)blockSize); ++i){
             ciphertext[i] = M3[i];
@@ -276,7 +280,7 @@ public:
 		int plainlen, outlen;
 
 		ctx = EVP_CIPHER_CTX_new();
-		EVP_DecryptInit(ctx, EVP_aes_128_ecb(), Kab, NULL);
+		EVP_DecryptInit(ctx, EVP_aes_128_ecb(), Ksec, NULL);
 		EVP_DecryptUpdate(ctx, receivedSign, &outlen, ciphertext, EVP_PKEY_size(privateKey)+(int)blockSize);
 		plainlen=outlen;
 		EVP_DecryptFinal(ctx, receivedSign+plainlen, &outlen);
@@ -294,28 +298,28 @@ public:
         //verifica la firma
 		mdctx = EVP_MD_CTX_new();
 		if(!mdctx){
-			//delete_keys();
+			deleteKeys();
 			EVP_PKEY_free(privateKey);
 			cerr << "Error: EVP_MD_CTX_new returned NULL\n";
             exit(1);
 		}
 		ret = EVP_VerifyInit(mdctx, md);
 		if(ret == 0){
-			//delete_keys();
+			deleteKeys();
 			EVP_PKEY_free(privateKey);
 			cerr << "Error: EVP_VerifyInit returned " << ret << "\n";
             exit(1);
 		}
 		ret = EVP_VerifyUpdate(mdctx, YaConcatYb, 2*SIZE_Y_DH);
 		if(ret == 0){
-			//delete_keys();
+			deleteKeys();
 			EVP_PKEY_free(privateKey);
 			cerr << "Error: EVP_VerifyUpdate returned " << ret << "\n";
             exit(1);
 		}
 		ret = EVP_VerifyFinal(mdctx, receivedSign, EVP_PKEY_size(privateKey), serverPublicKey);
 		if(ret != 1){
-			//delete_keys();
+			deleteKeys();
 			EVP_PKEY_free(privateKey);
 			cerr << "Error: EVP_VerifyFinal returned " << ret << " (invalid signature?)\n";
             exit(1);

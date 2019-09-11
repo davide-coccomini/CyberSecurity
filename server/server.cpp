@@ -188,7 +188,7 @@ class Server {
 		cout<<"Server is listening to port " << SERVER_PORT <<endl;
 	}
 
-	int keySharing(){ //o keyBuilding
+	int keySharing(){
 		//caricamento chiave privata
 		privateKey = loadPrivateKey("../certificates/Server_key.pem");
 
@@ -316,17 +316,19 @@ class Server {
 			return -1;
         }
 
-        DH_free(dhSession);
-        //BN_free(Yb);
-		//BN_free(Ya); ???
+		BN_free(Yb);
 		cout<<"Kab CALCOLATA!"<<endl;
 
+		ret = builtSessionKeys(Kab, BN_num_bytes(p));
+		if(ret < 0){
+			return -1;
+        }
 		//decripta M2 con Kab
 		unsigned char receivedSign[EVP_PKEY_size(privateKey)+(int)blockSize];
 		int plainlen, outlen;
 
 		EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-		EVP_DecryptInit(ctx, EVP_aes_128_ecb(), Kab, NULL);
+		EVP_DecryptInit(ctx, EVP_aes_128_ecb(), Ksec, NULL);
 		EVP_DecryptUpdate(ctx, receivedSign, &outlen, ciphertext, EVP_PKEY_size(privateKey)+(int)blockSize);
 		plainlen=outlen;
 		EVP_DecryptFinal(ctx, receivedSign+plainlen, &outlen);
@@ -352,28 +354,28 @@ class Server {
 
 		EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
 		if(!mdctx){
-			//delete_keys();
+			deleteKeys();
 			EVP_PKEY_free(privateKey);
 			cerr << "Error: EVP_MD_CTX_new returned NULL\n";
 			return -1;
 		}
 		ret = EVP_VerifyInit(mdctx, md);
 		if(ret == 0){
-			//delete_keys();
+			deleteKeys();
 			EVP_PKEY_free(privateKey);
 			cerr << "Error: EVP_VerifyInit returned " << ret << "\n";
 			return -1;
 		}
 		ret = EVP_VerifyUpdate(mdctx, YaConcatYb, 2*SIZE_Y_DH);
 		if(ret == 0){
-			//delete_keys();
+			deleteKeys();
 			EVP_PKEY_free(privateKey);
 			cerr << "Error: EVP_VerifyUpdate returned " << ret << "\n";
 			return -1;
 		}
 		ret = EVP_VerifyFinal(mdctx, receivedSign, EVP_PKEY_size(privateKey), clientPublicKey);
 		if(ret != 1){
-			//delete_keys();
+			deleteKeys();
 			EVP_PKEY_free(privateKey);
 			cerr << "Error: EVP_VerifyFinal returned " << ret << " (invalid signature?)\n";
 			return -1;
@@ -388,7 +390,7 @@ class Server {
 		unsigned int signatureLen;
 		mdctx = EVP_MD_CTX_new();
         if(!mdctx){
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cout<< "Error: EVP_MD_CTX_new returned NULL"<<endl; //DA MODIFICARE
             exit(1);
@@ -396,7 +398,7 @@ class Server {
 
         ret = EVP_SignInit(mdctx, md);
         if(ret == 0){
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cerr << "Error: EVP_SignInit returned " << ret << "\n"; //DA MODIFICARE
             exit(1);
@@ -404,7 +406,7 @@ class Server {
 
         ret = EVP_SignUpdate(mdctx, YaConcatYb, 2*SIZE_Y_DH);
         if(ret == 0){
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cerr << "Error: EVP_SignUpdate returned " << ret << "\n"; //DA MODIFICARE
             exit(1);
@@ -412,7 +414,7 @@ class Server {
 
         ret = EVP_SignFinal(mdctx, signature, &signatureLen, privateKey);
         if(ret == 0){
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cerr << "Error: EVP_SignFinal returned " << ret << "\n"; //DA MODIFICARE
             exit(1);
@@ -422,7 +424,7 @@ class Server {
 		//Cifratura di <Ya,Yb>A
         int cipherLen, outLen;
         ctx = EVP_CIPHER_CTX_new();
-        EVP_EncryptInit(ctx, EVP_aes_128_ecb(), Kab, NULL);
+        EVP_EncryptInit(ctx, EVP_aes_128_ecb(), Ksec, NULL);
         EVP_EncryptUpdate(ctx, ciphertext, &outLen, signature, EVP_PKEY_size(privateKey));
         cipherLen = outLen;
         EVP_EncryptFinal(ctx, ciphertext+cipherLen, &outLen);
@@ -449,7 +451,7 @@ class Server {
         int cs=htonl(certSize);
         ret = send(clientFd, (void*)&cs, sizeof(int), 0);
         if (ret < 0) {
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cerr << "Error sending certificate" <<endl; //DA RIVEDERE
             exit(1);
@@ -458,7 +460,7 @@ class Server {
         //invio M3
         ret = send(clientFd, (void*)M3, (int)cipherLen+certSize, 0);
         if (ret < 0) {
-            //delete_keys();
+            deleteKeys();
             EVP_PKEY_free(privateKey);
             cerr << "Error sending M2" <<endl;//DA RIVEDERE
             exit(1);
@@ -468,13 +470,38 @@ class Server {
 	}
 
 	void startToRun(){
+		while(true){
+			unsigned int len = sizeof(clientAddress);
+			clientFd = accept(socketFd, (struct sockaddr*)&clientAddress, (socklen_t*)&len);
+			if(clientFd<0){
+				cout<<"Accept goes wrong"<<endl;
+				continue;
+			}
+
+			// inizializzo iv e counter
+			iv = 0;
+			counter = 0;
+
+			int ret = keySharing();
+			if(ret<0){
+				close(clientFd);
+				continue;
+			}
+		}
+		/*
 		unsigned int len = sizeof(clientAddress);
 		clientFd = accept(socketFd, (struct sockaddr*)&clientAddress, (socklen_t*)&len);
 		if(clientFd<0){
 			cout<<"Accept goes wrong"<<endl;
 			exit(1); //MODIFICARE
 		}
+*/
+	}
 
+	void handleClient(){
+		// !!! CONTROLLARE IL WARP-AROUND !!!
+
+		//RICEVERE COMANDO
 	}
 /*
 void loadPrivateKey(){
