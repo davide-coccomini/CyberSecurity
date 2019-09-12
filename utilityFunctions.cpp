@@ -130,8 +130,8 @@ return 1;
 }
 
 void deleteKeys() {
-    explicit_bzero(sec_key, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
-    free(sec_key);
-    explicit_bzero(aut_key, EVP_MD_size(EVP_sha256()));
-    free(aut_key);
+    explicit_bzero(Ksec, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+    free(Ksec);
+    explicit_bzero(Kaut, EVP_MD_size(EVP_sha256()));
+    free(Kaut);
 }

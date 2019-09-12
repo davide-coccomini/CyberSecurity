@@ -30,6 +30,7 @@ class Client {
 
     string allowedCommands[5] = {"list", "help", "quit", "download", "upload"};
     string typedCommand;
+    string typedFileName;
 
     X509* clientCertification, *CACertification;
     EVP_PKEY* privateKey;
@@ -328,11 +329,102 @@ public:
 		cout<<"verifica di M3 andata a buon fine"<<endl;
 
     }
+
+    void startToRun(){
+        cout<<"WELCOME!"<<endl;
+        helpCommand();
+        while(true){
+            // !!! CONTROLLARE WARP-AROUND !!!
+
+            string typedString;
+
+            cout << ">";
+            getline(cin, typedString);
+
+            if(!verifyAndAcquireInput(typedString)){
+                continue;
+            }
+
+            if(typedCommand.compare("help")==0){
+                helpCommand();
+            }
+            else if(typedCommand.compare("quit")==0){
+                //delete_keys();
+                X509_STORE_free(store);
+                close(sd);
+                return;
+            }
+
+
+        }
+    }
+
+    void helpCommand(){
+        cout<<"The commands that can be typed are:"<<endl;
+        cout<<"    help                --> show the allowed commands"<<endl;
+        cout<<"    list                --> show the list of files on the server "<<endl;
+        cout<<"    upload [filename]   --> for uploading a file on the serever"<<endl;
+        cout<<"    download [filename] --> for downloading a file from the server"<<endl;
+        cout<<"    quit                --> to end the program"<<endl<<endl;
+    }
+    bool verifyAndAcquireInput(string s){
+        if(s.length()<4){
+            cout<<"The command is incorrect."<<endl;
+            cout<<"Type \"hepl\" for more informations."<<endl;
+            return false;
+        }
+        string command;
+        string fileName;
+
+        int commandLen = s.find(' ', 0);
+        if(commandLen<0){
+            //nessuno spazio presente
+            command = s.substr(0, s.length());
+        }else if((commandLen>=0 && commandLen<4) || (commandLen==((int)s.length()-1))){
+            //il primo spazio è nelle prime 4 posizioni o per ultimo
+            cout<<"The command is incorrect."<<endl;
+            cout<<"Type \"hepl\" for more informations."<<endl;
+            return false;
+        }else{
+            command = s.substr(0,commandLen);
+            fileName =s.substr(commandLen+1);
+        }
+
+        size_t i;
+        for(i=0; i<5; ++i) {
+            if(allowedCommands[i].compare(command)==0) {
+                if (command.compare("download")==0 || command.compare("upload")==0) {
+
+                    if((fileName.size())>MAX_FILENAME_SIZE) {
+                        cerr<<"Filename is too long, try again."<<endl;
+                        return false;
+                    }
+                    else if (fileName.empty()) {
+                        cout<<"Filename is needed for command \""<<command<<"\". "<<endl;
+                        return false;
+                    }
+                }else if(!fileName.empty()){
+                    cout<<"Command \""<<command<<"\" must be typed alone. "<<endl;
+                    return false;
+                }
+                break;
+            }
+        }
+        if (i==5){
+            cout<<"The command is incorrect."<<endl;
+            cout<<"Type \"hepl\" for more informations."<<endl;
+            return false;
+        }
+
+        typedCommand= command;
+        typedFileName=fileName;
+        return true;
+    }
 };
 
 int main(){
     Client c;
-    cout<<"ciao"<<endl;
     c.keySharing();
+    c.startToRun();
     return 0;
 }
