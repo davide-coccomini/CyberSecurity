@@ -379,7 +379,7 @@ public:
         int commandLen = s.find(' ', 0);
         if(commandLen<0){
             //nessuno spazio presente
-            command = s.substr(0, s.length());
+            command = s;
         }else if((commandLen>=0 && commandLen<4) || (commandLen==((int)s.length()-1))){
             //il primo spazio è nelle prime 4 posizioni o per ultimo
             cout<<"The command is incorrect."<<endl;

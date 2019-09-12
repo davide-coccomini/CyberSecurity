@@ -34,7 +34,7 @@ size_t iv = 0;
 
 void* createDigest(unsigned char* plainText, int plainTextSize){
 	unsigned char bufferCounter[sizeof(size_t)+plainTextSize];
-	unsigned char digest[hashSize];
+	unsigned char* digest =(unsigned char*)malloc(hashSize);
 
 	memcpy(bufferCounter, &counter, sizeof(size_t));
 	memcpy(bufferCounter + sizeof(size_t), plainText, plainTextSize);
@@ -48,28 +48,32 @@ void* createDigest(unsigned char* plainText, int plainTextSize){
 
 	return (void*)digest;
 }
+
 int sendSize(int socket, size_t length){
 
 	unsigned char plainText[sizeof(uint32_t)];
-	unsigned char cipherText[blockSize];
-	unsigned char concatenatedText[MAX_NAME_SIZE+hashSize];
+	unsigned char concatenatedText[sizeof(uint32_t)+hashSize];
+	unsigned char cipherText[sizeof(uint32_t)+hashSize+blockSize];
 
 	uint32_t messageLength = htonl(length);
-	memcpy(plainText, &length, sizeof(uint32_t));
+	memcpy(plainText, &messageLength, sizeof(uint32_t));
 
 
 	// Create the digest
-	void* digest = createDigest(plainText, length+sizeof(size_t));
+	//void* digest = createDigest(plainText, length+sizeof(size_t));
+	void* digest = createDigest(plainText, sizeof(uint32_t));
 
-	memcpy(concatenatedText, messageLength, sizeof(uint32_t));
+	memcpy(concatenatedText, plainText, sizeof(uint32_t));
 	memcpy(concatenatedText+sizeof(uint32_t), digest, hashSize);
 
 	// Generate the cipherText
-	size_t tmpLength = 0;
-	size_t resultLength = 0;
+	unsigned char ivTemp[sizeof(size_t)];
+	memcpy(ivTemp, &iv, sizeof(size_t));
+	int tmpLength = 0;
+	int resultLength = 0;
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-	EVP_EncryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
-	EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, sizeof(uint32_t));
+	EVP_EncryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivTemp);
+	EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, sizeof(uint32_t)+hashSize);
 	EVP_EncryptFinal(ctx, cipherText+tmpLength, &resultLength);
 
 	// Send the message
