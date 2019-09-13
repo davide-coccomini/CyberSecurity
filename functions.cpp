@@ -32,7 +32,8 @@ const size_t hashSize = EVP_MD_size(md);
 const size_t ivLength = EVP_CIPHER_iv_length(EVP_aes_128_cbc());
 
 size_t counter = 0;
-unsigned char* iv;  //come si incrementa?
+unsigned char ivChar[sizeof(size_t)];
+size_t iv = 0;
 
 void createDigest(unsigned char* plainText, int plainTextSize, unsigned char* digest){
 	unsigned char bufferCounter[sizeof(size_t)+plainTextSize];
@@ -68,7 +69,7 @@ int sendSize(int socket, size_t length){
 	int tmpLength = 0;
 	int resultLength = 0;
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-	EVP_EncryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
+	EVP_EncryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivChar);
 	EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, sizeof(uint32_t)+hashSize);
 	EVP_EncryptFinal(ctx, cipherText+tmpLength, &resultLength);
 
@@ -80,10 +81,11 @@ int sendSize(int socket, size_t length){
 		EVP_CIPHER_CTX_free(ctx);
 		return -1;
 	}
-	iv++; //iv è di tipo unsigned char
+	iv++;
+	memcpy(ivChar, &iv, sizeof(size_t));
 	counter++;
 
-	explicit_bzero(plainText,MAX_NAME_SIZE);
+	explicit_bzero(plainText,sizeof(uint32_t));
 	EVP_CIPHER_CTX_free(ctx);
 	return 0;
 }
@@ -114,7 +116,7 @@ int sendString(int socket, string s){
 	int tmpLength = 0;
 	int resultLength = 0;
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-	EVP_EncryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
+	EVP_EncryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivChar);
 	EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, length+hashSize);
 	EVP_EncryptFinal(ctx, cipherText+tmpLength, &resultLength);
 
@@ -126,7 +128,8 @@ int sendString(int socket, string s){
 		EVP_CIPHER_CTX_free(ctx);
 		return -1;
 	}
-	iv++; // iv è unsigned char*
+	iv++;
+	memcpy(ivChar, &iv, sizeof(size_t));
 	counter++;
 
 	explicit_bzero(plainText,length);
@@ -162,6 +165,7 @@ uint32_t receiveSize(int socket){
 	unsigned char plainText[sizeof(uint32_t)];
 	unsigned char cipherText[blockSize+hashSize];
 	unsigned char concatenatedText[sizeof(uint32_t)+hashSize];
+	unsigned char digest[hashSize];
 	uint32_t length;
 	int done = recv(socket, (void*)&cipherText, blockSize, MSG_WAITALL);
 	if(done < 0){
@@ -171,7 +175,7 @@ uint32_t receiveSize(int socket){
 	int len = 0;
 	// Decrypt message
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new(); // Inizializzo un contesto per decriptare il messaggio
-	EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
+	EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivChar);
 	EVP_DecryptUpdate(ctx, concatenatedText, &len, cipherText, blockSize+hashSize);
 	EVP_DecryptFinal(ctx, concatenatedText+len, &len);
 	EVP_CIPHER_CTX_free(ctx);
@@ -182,12 +186,13 @@ uint32_t receiveSize(int socket){
 
 	memcpy(&length, plainText, sizeof(uint32_t));
 
-	done = checkDigest(socket, digest, cipherText, len);
+	done = checkDigest(digest, cipherText, len);
 	if(done < 0){
 		cerr << "Error checking digest" << endl;
 		return -1;
 	}
 	iv++;
+	memcpy(ivChar, &iv, sizeof(size_t));
 	explicit_bzero(plainText, sizeof(uint32_t));
 	return (uint32_t)ntohl(length);
 }
@@ -211,7 +216,7 @@ string receiveString(int socket){
 
 	// Decrypt message
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-	EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
+	EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivChar);
 	EVP_DecryptUpdate(ctx, concatenatedText, &length, cipherText, size+blockSize+hashSize);
 	EVP_DecryptFinal(ctx, concatenatedText+length, &length);
 	EVP_CIPHER_CTX_free(ctx);
@@ -226,13 +231,13 @@ string receiveString(int socket){
 		return s;
 	}
 	iv++;
+	memcpy(ivChar, &iv, sizeof(size_t));
 	counter++;
 	s = string((char*)plainText);
 
 	explicit_bzero(plainText, size);
 	return s;
 }
-
 
 /*
 int sendSize(int socket,size_t length){
