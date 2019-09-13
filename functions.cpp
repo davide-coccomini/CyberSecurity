@@ -139,7 +139,7 @@ int sendString(int socket, string s){
 	return 0;
 }
 
-int checkDigest(unsigned char* receivedDigest, unsigned char* message, int length){
+int checkDigest(unsigned char* receivedDigest, unsigned char* message, int length){ 
 	int done;
 	unsigned char digest[hashSize];
 	unsigned char bufferCounter[sizeof(size_t) + length];
@@ -241,6 +241,197 @@ string receiveString(int socket){
 	return s;
 }
 
+int sendFile(int socket, string fileName, uint32_t fileSize){
+	ifstream is;
+	is.open(fileName);
+	if(is){
+		
+		int tmpLength = 0;
+		int resultLength = 0;
+		EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new(); 
+		EVP_EncryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivChar); 
+
+		// Calculate the number of blocks to be sent
+		int blocks = (fileSize / BUFFER_SIZE) + 1;
+		int lastBlockSize = fileSize - (BUFFER_SIZE * blocks);
+
+		if(lastBlockSize == 0 && fileSize > 0){
+			lastBlockSize = BUFFER_SIZE;
+			blocks--;
+		}
+
+		int len = 0;
+		unsigned char cipherText[BUFFER_SIZE+blockSize+hashSize]; 
+		unsigned char plainText[BUFFER_SIZE];
+		unsigned char digest[hashSize];
+		unsigned char concatenatedText[BUFFER_SIZE+hashSize];		
+		// Send the size of the file		
+		int done = sendSize(socket, fileSize);
+
+		if(done < 0){
+			cerr << "Error sending file size" << endl;
+			EVP_CIPHER_CTX_free(ctx);
+			return -1;
+		}
+					
+		for(size_t i=0; i<(size_t)blocks-1; i++){
+			explicit_bzero(cipherText, BUFFER_SIZE+blockSize+hashSize); 
+			explicit_bzero(concatenatedText, hashSize+BUFFER_SIZE);
+			explicit_bzero(plainText, BUFFER_SIZE);
+			explicit_bzero(digest, hashSize);
+
+			// Read the block to be sent
+			is.read((char*)plainText, BUFFER_SIZE);
+
+			// Create the digest and concatenate
+			createDigest(plainText, BUFFER_SIZE, digest);
+			memcpy(concatenatedText, plainText, BUFFER_SIZE);
+			memcpy(concatenatedText+BUFFER_SIZE, digest, hashSize);
+
+			// Generate the cipherText
+			EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, BUFFER_SIZE + hashSize + blockSize);
+	
+			// Send the block
+			done = send(socket, (void*)&cipherText, resultLength, 0);
+			if(done < 0){
+				cerr << "Error sending block" << endl;
+				explicit_bzero(plainText, BUFFER_SIZE);
+				EVP_CIPHER_CTX_free(ctx);
+				return -1;
+			}
+			counter++;
+		}
+		// Send the last block
+		explicit_bzero(cipherText, BUFFER_SIZE+blockSize+hashSize); 
+		explicit_bzero(concatenatedText, hashSize+BUFFER_SIZE);
+		explicit_bzero(plainText, BUFFER_SIZE);
+		explicit_bzero(digest, hashSize);
+
+		is.read((char*)plainText, lastBlockSize);
+		
+		// Create the digest and concatenate
+		createDigest(plainText, lastBlockSize, digest);
+		memcpy(concatenatedText, plainText, lastBlockSize);
+		memcpy(concatenatedText+lastBlockSize, digest, hashSize);
+		
+		// Generate the cipherText
+		EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+		EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, lastBlockSize+hashSize+blockSize);
+		EVP_EncryptFinal(ctx, cipherText+tmpLength, &resultLength);
+		
+		// Send the block
+		done = send(socket, (void*)&cipherText, resultLength, 0);
+		if(done < 0){
+			cerr << "Error sending the last block" << endl;
+			explicit_bzero(plainText, BUFFER_SIZE);
+			EVP_CIPHER_CTX_free(ctx);
+			return -1;
+		}
+
+		iv++;
+		memcpy(ivChar, &iv, sizeof(size_t));
+		counter++;
+		explicit_bzero(plainText, BUFFER_SIZE);
+		EVP_CIPHER_CTX_free(ctx);	
+	}
+	
+	is.close();
+	return 0;
+}
+
+int receiveFile(int socket, string fileName){
+	int done, len = 0, length = 0;
+	ofstream os;
+	os.open(fileName);
+	
+	if(os) {
+		unsigned char cipherText[BUFFER_SIZE+blockSize]; 
+		unsigned char plainText[BUFFER_SIZE];
+		unsigned char digest[hashSize];
+		unsigned char concatenatedText[BUFFER_SIZE+hashSize];		
+
+		EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+		EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
+		int fileSize = receiveSize(socket);
+
+		// Calculate the number of blocks to be received
+		int blocks = (fileSize / BUFFER_SIZE) + 1;
+		int lastBlockSize = fileSize - (BUFFER_SIZE * blocks);
+
+		if(lastBlockSize == 0 && fileSize > 0){
+			lastBlockSize = BUFFER_SIZE;
+			blocks--;
+		}
+		for(size_t i=0; i<(size_t)blocks-1; i++){
+			explicit_bzero(cipherText, BUFFER_SIZE+blockSize); 
+			explicit_bzero(plainText, BUFFER_SIZE);
+			explicit_bzero(digest, hashSize);
+			done = recv(socket, (void*)&cipherText, BUFFER_SIZE+hashSize+blockSize, MSG_WAITALL);
+			if(done < 0){
+				cerr << "Error receiving block" << endl;
+				fs::remove(fs::path(fileName));
+				explicit_bzero(cipherText, BUFFER_SIZE+blockSize+hashSize);
+				EVP_CIPHER_CTX_free(ctx);
+				return -1;
+			}
+
+			length = 0;
+			// Decrypt message
+			EVP_DecryptUpdate(ctx, concatenatedText, &length, cipherText, BUFFER_SIZE+blockSize+hashSize);
+
+			// Split the message
+			memcpy(plainText, concatenatedText,BUFFER_SIZE);
+			memcpy(digest, concatenatedText + BUFFER_SIZE, hashSize);
+
+			done = checkDigest(digest, cipherText, BUFFER_SIZE+blockSize+hashSize);
+			if(done < 0){
+				cerr << "Error checking digest" << endl;
+				return -1;
+			}
+			counter++;
+			EVP_DecryptUpdate(ctx, plainText, &len, cipherText, BUFFER_SIZE);
+			os.write((char*)plainText, len);
+		}
+		
+		// Receive the last block
+		explicit_bzero(cipherText, BUFFER_SIZE+blockSize+hashSize); 
+		explicit_bzero(plainText, BUFFER_SIZE);
+		explicit_bzero(digest, hashSize);
+
+		done = recv(socket, (void*)&cipherText, BUFFER_SIZE+hashSize+blockSize, MSG_WAITALL);
+		if(done < 0){
+			cerr << "Error receiving the last block" << endl;
+			fs::remove(fs::path(fileName));
+			explicit_bzero(cipherText, BUFFER_SIZE+blockSize+hashSize);
+			EVP_CIPHER_CTX_free(ctx);
+			return -1;
+		}
+		length = 0;
+		// Decrypt message
+		EVP_DecryptUpdate(ctx, concatenatedText, &length, cipherText, lastBlockSize+blockSize+hashSize);
+		EVP_DecryptFinal(ctx, concatenatedText+length, &length);
+
+
+		// Split the message
+		memcpy(plainText, concatenatedText,BUFFER_SIZE);
+		memcpy(digest, concatenatedText + BUFFER_SIZE, hashSize);
+
+		done = checkDigest(digest, cipherText, BUFFER_SIZE+blockSize+hashSize);
+		if(done < 0){
+			cerr << "Error checking digest" << endl;
+			return -1;
+		}
+		counter++;
+		EVP_CIPHER_CTX_free(ctx);
+		os.write((char*)plainText, len);
+		
+		explicit_bzero(plainText, BUFFER_SIZE);
+		explicit_bzero(digest, hashSize);
+	}
+
+	os.close();
+	return 0;
+}
 /*
 int sendSize(int socket,size_t length){
 	int done;
