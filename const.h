@@ -4,3 +4,7 @@
 #define MAX_COUNTER 10000000
 #define BUFFER_SIZE 512
 
+//for connectionStatus variable
+#define	CLIENT_DISCONNECTED 0
+#define CLIENT_CONNECTED 1
+#define	ERROR_IN_CONNECTION 2

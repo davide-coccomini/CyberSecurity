@@ -23,6 +23,8 @@
 
 using namespace std;
 
+int connectionStatus;
+
 unsigned char* securityKey;
 unsigned char* authenticationKey;
 const EVP_MD* md = EVP_sha256();
@@ -137,7 +139,7 @@ int sendString(int socket, string s){
 	return 0;
 }
 
-int checkDigest(unsigned char* receivedDigest, unsigned char* message, int length){ 
+int checkDigest(unsigned char* receivedDigest, unsigned char* message, int length){
 	int done;
 	unsigned char digest[hashSize];
 	unsigned char bufferCounter[sizeof(size_t) + length];
