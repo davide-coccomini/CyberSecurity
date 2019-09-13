@@ -21,7 +21,7 @@
 
 #include "const.h"
 
-using namespace std; 
+using namespace std;
 
 unsigned char* securityKey;
 unsigned char* authenticationKey;
@@ -32,7 +32,7 @@ const size_t hashSize = EVP_MD_size(md);
 const size_t ivLength = EVP_CIPHER_iv_length(EVP_aes_128_cbc());
 
 size_t counter = 0;
-unsigned char* iv;
+unsigned char* iv;  //come si incrementa?
 
 void createDigest(unsigned char* plainText, int plainTextSize, unsigned char* digest){
 	unsigned char bufferCounter[sizeof(size_t)+plainTextSize];
@@ -45,12 +45,13 @@ void createDigest(unsigned char* plainText, int plainTextSize, unsigned char* di
 	HMAC_Update(ctx, bufferCounter, sizeof(size_t) + plainTextSize);
 	HMAC_Final(ctx, digest, (unsigned int*)&hashSize);
 	HMAC_CTX_free(ctx);
+
 }
 int sendSize(int socket, size_t length){
 
 	unsigned char plainText[sizeof(uint32_t)];
-	unsigned char cipherText[blockSize];
-	unsigned char concatenatedText[MAX_NAME_SIZE+hashSize];
+	unsigned char cipherText[hashSize+blockSize];
+	unsigned char concatenatedText[sizeof(uint32_t)+hashSize];
 	unsigned char digest[hashSize];
 
 	uint32_t messageLength = htonl(length);
@@ -68,18 +69,19 @@ int sendSize(int socket, size_t length){
 	int resultLength = 0;
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 	EVP_EncryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
-	EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, sizeof(uint32_t));
+	EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, sizeof(uint32_t)+hashSize);
 	EVP_EncryptFinal(ctx, cipherText+tmpLength, &resultLength);
 
 	// Send the message
 	int done = send(socket, (void*)&cipherText, resultLength, 0);
 	if(done < 0){
 		cerr << "Error sending size" << endl;
-		explicit_bzero(plainText, MAX_NAME_SIZE);
+		explicit_bzero(plainText, sizeof(uint32_t));
 		EVP_CIPHER_CTX_free(ctx);
 		return -1;
 	}
-	iv++;
+	iv++; //iv è di tipo unsigned char
+	counter++;
 
 	explicit_bzero(plainText,MAX_NAME_SIZE);
 	EVP_CIPHER_CTX_free(ctx);
@@ -94,16 +96,16 @@ int sendString(int socket, string s){
 	size_t length = s.size() + 1;
 	int done = sendSize(socket,length);
 
-	unsigned char plainText[MAX_NAME_SIZE];
-	unsigned char cipherText[MAX_NAME_SIZE+blockSize];
-	unsigned char concatenatedText[MAX_NAME_SIZE+hashSize];
+	unsigned char plainText[length];
+	unsigned char cipherText[length+blockSize+hashSize];
+	unsigned char concatenatedText[length+hashSize];
 	unsigned char digest[hashSize];
 
 	memcpy(plainText, s.c_str(), s.size());
 	plainText[s.size()] = '\0';
 
 	// Create the digest
-	createDigest(plainText, length+sizeof(size_t), digest);
+	createDigest(plainText, length, digest);
 
 	memcpy(concatenatedText, plainText, s.size());
 	memcpy(concatenatedText+s.size(), digest, hashSize);
@@ -113,25 +115,26 @@ int sendString(int socket, string s){
 	int resultLength = 0;
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 	EVP_EncryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
-	EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, sizeof(uint32_t));
+	EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, length+hashSize);
 	EVP_EncryptFinal(ctx, cipherText+tmpLength, &resultLength);
 
 	// Send the message
 	done = send(socket, (void*)&cipherText, resultLength, 0);
 	if(done < 0){
 		cerr << "Error sending string" << endl;
-		explicit_bzero(plainText, MAX_NAME_SIZE);
+		explicit_bzero(plainText, length);
 		EVP_CIPHER_CTX_free(ctx);
 		return -1;
 	}
-	iv++;
+	iv++; // iv è unsigned char*
+	counter++;
 
-	explicit_bzero(plainText,MAX_NAME_SIZE);
+	explicit_bzero(plainText,length);
 	EVP_CIPHER_CTX_free(ctx);
 	return 0;
 }
 
-int checkDigest(int socket, unsigned char* receivedDigest, unsigned char* message, int length){
+int checkDigest(unsigned char* receivedDigest, unsigned char* message, int length){ 
 	int done;
 	unsigned char digest[hashSize];
 	unsigned char bufferCounter[sizeof(size_t) + length];
@@ -156,10 +159,9 @@ int checkDigest(int socket, unsigned char* receivedDigest, unsigned char* messag
 }
 
 uint32_t receiveSize(int socket){
-	unsigned char plainText[blockSize];
-	unsigned char cipherText[blockSize];
-	unsigned char concatenatedText[MAX_NAME_SIZE+hashSize];
-	unsigned char digest[hashSize];
+	unsigned char plainText[sizeof(uint32_t)];
+	unsigned char cipherText[blockSize+hashSize];
+	unsigned char concatenatedText[sizeof(uint32_t)+hashSize];
 	uint32_t length;
 	int done = recv(socket, (void*)&cipherText, blockSize, MSG_WAITALL);
 	if(done < 0){
@@ -170,7 +172,7 @@ uint32_t receiveSize(int socket){
 	// Decrypt message
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new(); // Inizializzo un contesto per decriptare il messaggio
 	EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
-	EVP_DecryptUpdate(ctx, concatenatedText, &len, cipherText, blockSize);
+	EVP_DecryptUpdate(ctx, concatenatedText, &len, cipherText, blockSize+hashSize);
 	EVP_DecryptFinal(ctx, concatenatedText+len, &len);
 	EVP_CIPHER_CTX_free(ctx);
 
@@ -186,7 +188,7 @@ uint32_t receiveSize(int socket){
 		return -1;
 	}
 	iv++;
-	explicit_bzero(plainText, MAX_NAME_SIZE+blockSize);
+	explicit_bzero(plainText, sizeof(uint32_t));
 	return (uint32_t)ntohl(length);
 }
 
@@ -197,11 +199,11 @@ string receiveString(int socket){
 	string s;
 	uint32_t size = receiveSize(socket);
 
-	unsigned char plainText[MAX_NAME_SIZE+blockSize];
-	unsigned char cipherText[MAX_NAME_SIZE+blockSize];
-	unsigned char concatenatedText[MAX_NAME_SIZE+hashSize];
+	unsigned char plainText[size];
+	unsigned char cipherText[size+blockSize+hashSize];
+	unsigned char concatenatedText[size+hashSize];
 
-	done = recv(socket, (void*)&cipherText, size, MSG_WAITALL);
+	done = recv(socket, (void*)&cipherText, size+blockSize+hashSize, MSG_WAITALL);
 	if(done < 0){
 		cerr << "Error receiving message" << endl;
 		return s;
@@ -210,23 +212,24 @@ string receiveString(int socket){
 	// Decrypt message
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 	EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
-	EVP_DecryptUpdate(ctx, concatenatedText, &length, cipherText, size);
+	EVP_DecryptUpdate(ctx, concatenatedText, &length, cipherText, size+blockSize+hashSize);
 	EVP_DecryptFinal(ctx, concatenatedText+length, &length);
 	EVP_CIPHER_CTX_free(ctx);
 
 	// Split the message
-	memcpy(plainText, concatenatedText,length);
-	memcpy(digest, concatenatedText + length, hashSize);
+	memcpy(plainText, concatenatedText,size);
+	memcpy(digest, concatenatedText + size, hashSize);
 
-	done = checkDigest(socket, digest, cipherText, size);
+	done = checkDigest(digest, cipherText, size+blockSize+hashSize);
 	if(done < 0){
 		cerr << "Error checking digest" << endl;
 		return s;
 	}
 	iv++;
+	counter++;
 	s = string((char*)plainText);
 
-	explicit_bzero(plainText, MAX_NAME_SIZE+blockSize);
+	explicit_bzero(plainText, size);
 	return s;
 }
 
