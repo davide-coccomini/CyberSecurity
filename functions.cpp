@@ -1,4 +1,4 @@
-#include <string>
+////counter++#include <string>
 #include <string.h>
 #include <vector>
 #include <iostream>
@@ -50,6 +50,8 @@ void createDigest(unsigned char* plainText, int plainTextSize, unsigned char* di
 	HMAC_Final(ctx, digest, (unsigned int*)&hashSize);
 	HMAC_CTX_free(ctx);
 
+	cout<<"digest creato"<<endl;
+
 }
 int sendSize(int socket, size_t length){
 
@@ -60,10 +62,10 @@ int sendSize(int socket, size_t length){
 
 	uint32_t messageLength = htonl(length);
 	memcpy(plainText, &messageLength, sizeof(uint32_t));
-
-
+	cout<<messageLength<<endl;
+	cout<<plainText<<endl;
 	// Create the digest
-	createDigest(plainText, length+sizeof(size_t), digest);
+	createDigest(plainText, sizeof(uint32_t), digest);
 
 	memcpy(concatenatedText, plainText, sizeof(uint32_t));
 	memcpy(concatenatedText+sizeof(uint32_t), digest, hashSize);
@@ -75,7 +77,15 @@ int sendSize(int socket, size_t length){
 	EVP_EncryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivChar);
 	EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, sizeof(uint32_t)+hashSize);
 	EVP_EncryptFinal(ctx, cipherText+tmpLength, &resultLength);
-
+	resultLength+=tmpLength;
+	cout<<"ciphertext inviato:"<<endl;
+	cout<<cipherText<<endl<<endl;
+	cout<<"digest inviato:"<<endl;
+	cout<<digest<<endl<<endl;
+	cout<<"plaintext inviato:"<<endl;
+	cout<<plainText<<endl<<endl;
+	cout<<"dimensione testo cifrato:"<<endl;
+	cout<<resultLength<<endl<<endl;
 	// Send the message
 	int done = send(socket, (void*)&cipherText, resultLength, 0);
 	if(done < 0){
@@ -84,12 +94,15 @@ int sendSize(int socket, size_t length){
 		EVP_CIPHER_CTX_free(ctx);
 		return -1;
 	}
-	iv++;
+	//iv++;
 	memcpy(ivChar, &iv, sizeof(size_t));
-	counter++;
+	//counter++;
 
 	explicit_bzero(plainText,sizeof(uint32_t));
 	EVP_CIPHER_CTX_free(ctx);
+
+	cout<<"sendSize effettuata"<<endl;
+	cout<<"inviato: "<<length<<endl;
 	return 0;
 }
 
@@ -131,12 +144,15 @@ int sendString(int socket, string s){
 		EVP_CIPHER_CTX_free(ctx);
 		return -1;
 	}
-	iv++;
+	//iv++;
 	memcpy(ivChar, &iv, sizeof(size_t));
-	counter++;
+	//counter++;
 
 	explicit_bzero(plainText,length);
 	EVP_CIPHER_CTX_free(ctx);
+
+	cout<<"comando inviato, inviato:"<<endl;
+	cout<<s<<endl;
 	return 0;
 }
 
@@ -160,7 +176,7 @@ int checkDigest(unsigned char* receivedDigest, unsigned char* message, int lengt
 		cerr << "The received digest is wrong" << endl;
 		return -1;
 	}
-	counter++;
+	//counter++;
 	return 0;
 }
 
@@ -170,7 +186,8 @@ uint32_t receiveSize(int socket){
 	unsigned char concatenatedText[sizeof(uint32_t)+hashSize];
 	unsigned char digest[hashSize];
 	uint32_t length;
-	int done = recv(socket, (void*)&cipherText, blockSize, MSG_WAITALL);
+	int done = recv(socket, (void*)&cipherText, blockSize+hashSize, MSG_WAITALL);
+	cout<<"cazzo"<<endl;
 	if(done < 0){
 		cerr<<"Error receiving size"<<endl;
 		return 0;
@@ -182,6 +199,10 @@ uint32_t receiveSize(int socket){
 	EVP_DecryptUpdate(ctx, concatenatedText, &len, cipherText, blockSize+hashSize);
 	EVP_DecryptFinal(ctx, concatenatedText+len, &len);
 	EVP_CIPHER_CTX_free(ctx);
+	cout<<"1cazzo"<<endl;
+	cout<<"ciphertext ricevuto:"<<endl;
+	cout<<cipherText<<endl<<endl;
+
 
 	// Split the message
 	memcpy(plainText, concatenatedText,sizeof(uint32_t));
@@ -189,14 +210,22 @@ uint32_t receiveSize(int socket){
 
 	memcpy(&length, plainText, sizeof(uint32_t));
 
+	cout<<"digest ricevuto:"<<endl;
+	cout<<digest<<endl<<endl;
+	cout<<"plaintext ricevuto:"<<endl;
+	cout<<plainText<<endl<<endl;
 	done = checkDigest(digest, cipherText, len);
 	if(done < 0){
 		cerr << "Error checking digest" << endl;
 		return -1;
 	}
-	iv++;
+	//iv++;
 	memcpy(ivChar, &iv, sizeof(size_t));
 	explicit_bzero(plainText, sizeof(uint32_t));
+
+	cout<<"ricevuta dimensione"<<endl;
+	cout<<"dimensione = "<<ntohl(length)<<endl;
+
 	return (uint32_t)ntohl(length);
 }
 
@@ -205,8 +234,9 @@ string receiveString(int socket){
 	int done, length = 0;
 	unsigned char digest[hashSize];
 	string s;
+	cout<<"cazzo10"<<endl;
 	uint32_t size = receiveSize(socket);
-
+	cout<<"cazzo11          "<<endl;
 	unsigned char plainText[size];
 	unsigned char cipherText[size+blockSize+hashSize];
 	unsigned char concatenatedText[size+hashSize];
@@ -233,12 +263,14 @@ string receiveString(int socket){
 		cerr << "Error checking digest" << endl;
 		return s;
 	}
-	iv++;
+	//iv++;
 	memcpy(ivChar, &iv, sizeof(size_t));
-	counter++;
+	//counter++;
 	s = string((char*)plainText);
 
 	explicit_bzero(plainText, size);
+	cout<<"comando ricevuto, ricevuto:"<<endl;
+	cout<<s<<endl;
 	return s;
 }
 
@@ -302,7 +334,7 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 				EVP_CIPHER_CTX_free(ctx);
 				return -1;
 			}
-			counter++;
+			//counter++;
 		}
 		// Send the last block
 		explicit_bzero(cipherText, BUFFER_SIZE+blockSize+hashSize);
@@ -330,9 +362,9 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 			return -1;
 		}
 
-		iv++;
+		//iv++;
 		memcpy(ivChar, &iv, sizeof(size_t));
-		counter++;
+		//counter++;
 		explicit_bzero(plainText, BUFFER_SIZE);
 		EVP_CIPHER_CTX_free(ctx);
 	}
@@ -392,7 +424,7 @@ int receiveFile(int socket, string fileName){
 				cerr << "Error checking digest" << endl;
 				return -1;
 			}
-			counter++;
+			//counter++;
 			EVP_DecryptUpdate(ctx, plainText, &len, cipherText, BUFFER_SIZE);
 			os.write((char*)plainText, len);
 		}
@@ -426,7 +458,7 @@ int receiveFile(int socket, string fileName){
 			cerr << "Error checking digest" << endl;
 			return -1;
 		}
-		counter++;
+		//counter++;
 		EVP_CIPHER_CTX_free(ctx);
 		os.write((char*)plainText, len);
 

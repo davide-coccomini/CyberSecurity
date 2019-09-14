@@ -526,7 +526,7 @@ class Server {
 	void handleClient(){
 		while(true){
 			// !!! CONTROLLARE IL WARP-AROUND !!!
-
+			cout<<"cazzo1"<<endl;
 			//RICEVERE COMANDO
 			string receivedCommand = receiveString(clientFd);
 			if(connectionStatus != CLIENT_CONNECTED){
@@ -536,7 +536,7 @@ class Server {
 
 			string command;
 			string filename;
-
+			cout<<"cazzo2"<<endl;
 			if(!verifyAndAcquireInput(receivedCommand, command, filename)){
 				//comando non corretto
 				//forse bisogna rispondere
