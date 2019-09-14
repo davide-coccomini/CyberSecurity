@@ -253,19 +253,21 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 		EVP_EncryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivChar); 
 
 		// Calculate the number of blocks to be sent
-		int blocks = (fileSize / BUFFER_SIZE) + 1;
+		int blocks = (fileSize / BUFFER_SIZE);
 		int lastBlockSize = fileSize - (BUFFER_SIZE * blocks);
 
 		if(lastBlockSize == 0 && fileSize > 0){
 			lastBlockSize = BUFFER_SIZE;
-			blocks--;
+		}else{
+			blocks++;
 		}
 
 		int len = 0;
 		unsigned char cipherText[BUFFER_SIZE+blockSize+hashSize]; 
 		unsigned char plainText[BUFFER_SIZE];
 		unsigned char digest[hashSize];
-		unsigned char concatenatedText[BUFFER_SIZE+hashSize];		
+		unsigned char concatenatedText[BUFFER_SIZE+hashSize];
+
 		// Send the size of the file		
 		int done = sendSize(socket, fileSize);
 
@@ -345,7 +347,7 @@ int receiveFile(int socket, string fileName){
 	os.open(fileName);
 	
 	if(os) {
-		unsigned char cipherText[BUFFER_SIZE+blockSize]; 
+		unsigned char cipherText[BUFFER_SIZE+blockSize+hashSize]; 
 		unsigned char plainText[BUFFER_SIZE];
 		unsigned char digest[hashSize];
 		unsigned char concatenatedText[BUFFER_SIZE+hashSize];		
@@ -355,16 +357,18 @@ int receiveFile(int socket, string fileName){
 		int fileSize = receiveSize(socket);
 
 		// Calculate the number of blocks to be received
-		int blocks = (fileSize / BUFFER_SIZE) + 1;
+		int blocks = (fileSize / BUFFER_SIZE);
 		int lastBlockSize = fileSize - (BUFFER_SIZE * blocks);
 
 		if(lastBlockSize == 0 && fileSize > 0){
 			lastBlockSize = BUFFER_SIZE;
-			blocks--;
+		}else{
+			blocks++;
 		}
 		for(size_t i=0; i<(size_t)blocks-1; i++){
-			explicit_bzero(cipherText, BUFFER_SIZE+blockSize); 
+			explicit_bzero(cipherText, BUFFER_SIZE+blockSize+hashSize); 
 			explicit_bzero(plainText, BUFFER_SIZE);
+			explicit_bzero(concatenatedText, hashSize+BUFFER_SIZE);
 			explicit_bzero(digest, hashSize);
 			done = recv(socket, (void*)&cipherText, BUFFER_SIZE+hashSize+blockSize, MSG_WAITALL);
 			if(done < 0){
@@ -380,7 +384,7 @@ int receiveFile(int socket, string fileName){
 			EVP_DecryptUpdate(ctx, concatenatedText, &length, cipherText, BUFFER_SIZE+blockSize+hashSize);
 
 			// Split the message
-			memcpy(plainText, concatenatedText,BUFFER_SIZE);
+			memcpy(plainText, concatenatedText, BUFFER_SIZE);
 			memcpy(digest, concatenatedText + BUFFER_SIZE, hashSize);
 
 			done = checkDigest(digest, cipherText, BUFFER_SIZE+blockSize+hashSize);
@@ -396,6 +400,7 @@ int receiveFile(int socket, string fileName){
 		// Receive the last block
 		explicit_bzero(cipherText, BUFFER_SIZE+blockSize+hashSize); 
 		explicit_bzero(plainText, BUFFER_SIZE);
+		explicit_bzero(concatenatedText, hashSize+BUFFER_SIZE);
 		explicit_bzero(digest, hashSize);
 
 		done = recv(socket, (void*)&cipherText, BUFFER_SIZE+hashSize+blockSize, MSG_WAITALL);
