@@ -21,6 +21,7 @@
 
 #include "const.h"
 
+namespace fs = std::experimental::filesystem;
 using namespace std;
 
 int connectionStatus;
@@ -315,7 +316,6 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 		memcpy(concatenatedText+lastBlockSize, digest, hashSize);
 		
 		// Generate the cipherText
-		EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 		EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, lastBlockSize+hashSize+blockSize);
 		EVP_EncryptFinal(ctx, cipherText+tmpLength, &resultLength);
 		
@@ -351,7 +351,7 @@ int receiveFile(int socket, string fileName){
 		unsigned char concatenatedText[BUFFER_SIZE+hashSize];		
 
 		EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-		EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, iv);
+		EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivChar);
 		int fileSize = receiveSize(socket);
 
 		// Calculate the number of blocks to be received
