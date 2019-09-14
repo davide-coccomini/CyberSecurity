@@ -15,7 +15,7 @@
 #include <fstream>
 #include <unistd.h>
 #include "../const.h"
-#include "../utilityFunctions.cpp"
+#include "../functions.cpp"
 #include "../DH.h"
 #include <experimental/filesystem> //
 
@@ -328,7 +328,7 @@ class Server {
 		int plainlen, outlen;
 
 		EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-		EVP_DecryptInit(ctx, EVP_aes_128_ecb(), Ksec, NULL);
+		EVP_DecryptInit(ctx, EVP_aes_128_ecb(), securityKey, NULL);
 		EVP_DecryptUpdate(ctx, receivedSign, &outlen, ciphertext, EVP_PKEY_size(privateKey)+(int)blockSize);
 		plainlen=outlen;
 		EVP_DecryptFinal(ctx, receivedSign+plainlen, &outlen);
@@ -424,7 +424,7 @@ class Server {
 		//Cifratura di <Ya,Yb>A
         int cipherLen, outLen;
         ctx = EVP_CIPHER_CTX_new();
-        EVP_EncryptInit(ctx, EVP_aes_128_ecb(), Ksec, NULL);
+        EVP_EncryptInit(ctx, EVP_aes_128_ecb(), securityKey, NULL);
         EVP_EncryptUpdate(ctx, ciphertext, &outLen, signature, EVP_PKEY_size(privateKey));
         cipherLen = outLen;
         EVP_EncryptFinal(ctx, ciphertext+cipherLen, &outLen);
@@ -471,12 +471,16 @@ class Server {
 
 	void startToRun(){
 		while(true){
+			connectionStatus = CLIENT_DISCONNECTED;
+
 			unsigned int len = sizeof(clientAddress);
 			clientFd = accept(socketFd, (struct sockaddr*)&clientAddress, (socklen_t*)&len);
 			if(clientFd<0){
 				cout<<"Accept goes wrong"<<endl;
 				continue;
 			}
+
+			connectionStatus = CLIENT_CONNECTED;
 
 			// inizializzo iv e counter
 			iv = 0;
@@ -487,139 +491,112 @@ class Server {
 				close(clientFd);
 				continue;
 			}
+
+			handleClient();
 		}
-		/*
-		unsigned int len = sizeof(clientAddress);
-		clientFd = accept(socketFd, (struct sockaddr*)&clientAddress, (socklen_t*)&len);
-		if(clientFd<0){
-			cout<<"Accept goes wrong"<<endl;
-			exit(1); //MODIFICARE
+
+	}
+
+	bool verifyAndAcquireInput(string s, string comm, string fn){
+		if(s.length()<4){
+			cout<<"Incorrect command received."<<endl;
+			return false;
 		}
-*/
+		string command;
+		string fileName;
+
+		int commandLen = s.find(' ', 0);
+		if(commandLen<0){
+			//nessuno spazio presente
+			command = s;
+		}else if((commandLen>=0 && commandLen<4) || (commandLen==((int)s.length()-1))){
+			//il primo spazio è nelle prime 4 posizioni o per ultimo
+			cout<<"Incorrect command received."<<endl;
+			return false;
+		}else{
+			command = s.substr(0,commandLen);
+			fileName =s.substr(commandLen+1);
+		}
+
+		comm= command;
+		fn=fileName;
+		return true;
 	}
 
 	void handleClient(){
-		// !!! CONTROLLARE IL WARP-AROUND !!!
+		while(true){
+			// !!! CONTROLLARE IL WARP-AROUND !!!
 
-		//RICEVERE COMANDO
-	}
-/*
-void loadPrivateKey(){
-string fileName = "ertificates/Server_key.pem";
-FILE* fileK = fopen(fileName.c_str(), "r");
-if(!fileK){
-	cerr << "ERROR: Error while opening server key file"<<endl;
-	exit(1);
-}
-
-privateKey = = PEM_read_PrivateKey(fileK, NULL, NULL, NULL);
-fclose(fileK);
-if(!privateKey){
-	cerr << "ERROR: error in reading private key"<<endl;
-	exit(1);
-}
-}
-
-
-void initFileList(){ // Read and save the files on the server
-	files.clear();
-	string dir = "server/files";
-	for(const auto & entry : fs::directory_iterator(dir)){
-		file f = file(fs::file_size(entry.path()),string(entry.path().filename()));
-		files.push_back(f);
-	}
-}
-
-void getFiles(){ // Print the files on the server
-	string dir = "server/files";
-	cout << "Files on the server:"<<endl;
-	for(const auto & entry : fs::directory_iterator(dir))
-		cout << "- " << string(entry.path().filename()) << "\t "<< fs::file_size(entry.path()) << endl;
-
-}
-
-
-void executeCommand(){ // Manage the received command
-	while(1){*/
-		/*
-		if((SIZE_MAX - counter) < MAX_COUNTER){
-			counter = 0;
-			keySharing();
-		}
-		int flags = 0;
-		string cmd = recv_string(clientFd, &flags);
-		*//*
-		if(!cmd.compare("list")){
-			cout << "Listing request received..."<<endl;
-			initFileList();
-			ofstream os;
-			os.open("server/files");
-
-			string filesOnServer;
-			for(size_t i = 0; i < files.size(); ++i)
-				filesOnServer += files[i].get_name() + '\t';
-			const char *a = files.c_str();
-			os.write(a, files.size()+1);
-			os.close();
-
-			size_t length = 0;
-			for(const auto & entry : fs::directory_iterator("files")){
-				if(string(!entry.path().filesname()).compare("list.txt")){
-					length = fs::file_size(entry.path());
-					break;
-				}
+			//RICEVERE COMANDO
+			string receivedCommand = receiveString(clientFd);
+			if(connectionStatus != CLIENT_CONNECTED){
+				//eliminare chiavi di sessione
+				break;
 			}
-			int ret = sendFile(clientFd, "server/list.txt", length);
-			if(ret < 0){
-				cerr << "Error while sending the list of files on the server" << endl;
+
+			string command;
+			string filename;
+
+			if(!verifyAndAcquireInput(receivedCommand, command, filename)){
+				//comando non corretto
+				//forse bisogna rispondere
 				continue;
 			}
-			fs::remove(fs::path("server/list.txt"));
-		}else if(!cmd.compare("download")){
-			initFileList();
-			int flags = 0;
-			string fileName = receiveString(clientFd, &flags);
 
-			string dir = "server/files/" + fileName;
-			if(flags == 1)
-				continue;
+			if(command.compare("list")==0){
+				cout<<"\"list\" command received."<<endl;
 
-			size_t length = 0;
-			bool found = false;
-			for(size_t i = 0; i < files.size(); i++){
-				length = files[i].get_size();
-				size_t maxSize = pow(2,32); // 4GB
-				if(length < maxSize){
-					cout << "Sending file ... "<<endl;
-					bool found = true;
-					int ret = sendFile(clientFd, dir, length);
-					if(ret < 0)
-						break;
-				}else{
-					cout << "Invalid file size" << endl;
-					found = true;
-					break;
+				ofstream os;
+				os.open("listDirectory/filelist.txt");
+
+				string fileName;
+				string path ="filesDirectory";
+
+				for (const auto & entry : fs::directory_iterator(path)){
+					filename = "name: "+string(entry.path().filename())+" -- dimension: "+to_string(fs::file_size(entry.path()))+"\t";
+					os.write(filename.c_str(), filename.size()+1);
+	            }
+				os.close();
+
+				//leggo dimensione file
+				path = "listDirectory/filelist.txt";
+				size_t filelistSize = fs::file_size(path);
+
+				//invio filelist.txt
+				int ret = sendFile(clientFd, path, filelistSize);
+				fs::remove(fs::path("listDirectory/filelist.txt"));
+				if(ret < 0) {
+					cerr<<"Error in sending file list" <<endl;
+					continue;
 				}
+
+
+
 			}
-			if(!found){
-				cout << "File not found" << endl;
+			else if(command.compare("download")==0){
+				cout<<"\"download\" command received."<<endl;
+
 			}
-			continue;
+			else if(command.compare("upload")==0){
+				cout<<"\"upload\" command received."<<endl;
+
+			}
+			else{
+				cout<<"Unknown command received!"<<endl;
+			}
 		}
-
-
-
 	}
 
-}
-
-
-void keyGeneration(unsigned char *g_ab, int length){} // Generate keys
-int keySharing(){} // Implements the sharing of the keys for station-to-station
-void resetKeys(){} // Delete all the keys generated
-}
-
+/*	void refreshFileList(){
+		string path = "filesDirectory";
+		files.clear();
+		for (const auto & entry : fs::directory_iterator(path)){
+			file f = file(fs::file_size(entry.path()), string(entry.path().filename()));
+			files.push_back(f);
+		}
+	};
 */
+
 };
 
 
@@ -636,7 +613,6 @@ int main(){
 	cout << "The server is ready" <<endl;
 	//s.listen();
 	s.startToRun();
-	s.keySharing();
 	return 0;
 
 }

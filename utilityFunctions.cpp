@@ -26,8 +26,8 @@ using namespace std;
 const size_t blockSize = EVP_CIPHER_block_size(EVP_aes_128_cbc());
 const EVP_MD* md = EVP_sha256();
 
-unsigned char* Ksec;
-unsigned char* Kaut;
+unsigned char* securityKey;
+unsigned char* authenticationKey;
 size_t counter = 0;
 size_t iv = 0;
 
@@ -109,29 +109,29 @@ int builtSessionKeys(unsigned char* Kab, int keyLen){
         cout<<"Error in built session keys, Kab is too short"<<endl;
         return -1;
     }
-    Ksec = (unsigned char*)malloc(EVP_CIPHER_key_length(EVP_aes_128_cbc()));
-    if(!Ksec) {
+    securityKey = (unsigned char*)malloc(EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+    if(!securityKey) {
         cerr << "Error in built session keys, malloc returned NULL"<<endl;
         return -1;
     }
-    Kaut = (unsigned char*)malloc(EVP_MD_size(EVP_sha256()));
-    if(!Kaut) {
+    authenticationKey = (unsigned char*)malloc(EVP_MD_size(EVP_sha256()));
+    if(!authenticationKey) {
         cerr << "Error in built session keys, malloc returned NULL"<<endl;
         return false;
     }
     for(int i=0; i<EVP_CIPHER_key_length(EVP_aes_128_cbc()); ++i){
-        Ksec[i]=Kab[i];
+        securityKey[i]=Kab[i];
     }
     for(int i=0; i<EVP_MD_size(EVP_sha256()); ++i){
-        Kaut[i]=Kab[keyLen-EVP_MD_size(EVP_sha256())+i];
+        authenticationKey[i]=Kab[keyLen-EVP_MD_size(EVP_sha256())+i];
     }
     explicit_bzero(Kab, keyLen);
 return 1;
 }
 
 void deleteKeys() {
-    explicit_bzero(Ksec, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
-    free(Ksec);
-    explicit_bzero(Kaut, EVP_MD_size(EVP_sha256()));
-    free(Kaut);
+    explicit_bzero(securityKey, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+    free(securityKey);
+    explicit_bzero(authenticationKey, EVP_MD_size(EVP_sha256()));
+    free(authenticationKey);
 }

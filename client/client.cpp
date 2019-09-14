@@ -15,7 +15,7 @@
 #include <openssl/err.h>
 
 #include "../const.h"
-#include "../utilityFunctions.cpp"
+#include "../functions.cpp"
 //#include "../functions.cpp"
 #include "../DH.h"
 #include <signal.h>
@@ -169,7 +169,7 @@ public:
         unsigned char ciphertext[EVP_PKEY_size(privateKey)+blockSize];
         int cipherLen, outLen;
         EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-        EVP_EncryptInit(ctx, EVP_aes_128_ecb(), Ksec, NULL);
+        EVP_EncryptInit(ctx, EVP_aes_128_ecb(), securityKey, NULL);
         EVP_EncryptUpdate(ctx, ciphertext, &outLen, signature, EVP_PKEY_size(privateKey));
         cipherLen = outLen;
         EVP_EncryptFinal(ctx, ciphertext+cipherLen, &outLen);
@@ -281,7 +281,7 @@ public:
 		int plainlen, outlen;
 
 		ctx = EVP_CIPHER_CTX_new();
-		EVP_DecryptInit(ctx, EVP_aes_128_ecb(), Ksec, NULL);
+		EVP_DecryptInit(ctx, EVP_aes_128_ecb(), securityKey, NULL);
 		EVP_DecryptUpdate(ctx, receivedSign, &outlen, ciphertext, EVP_PKEY_size(privateKey)+(int)blockSize);
 		plainlen=outlen;
 		EVP_DecryptFinal(ctx, receivedSign+plainlen, &outlen);
@@ -333,6 +333,7 @@ public:
     void startToRun(){
         cout<<"WELCOME!"<<endl;
         helpCommand();
+        int ret;
         while(true){
             // !!! CONTROLLARE WARP-AROUND !!!
 
@@ -354,7 +355,33 @@ public:
                 close(sd);
                 return;
             }
+            else if(typedCommand.compare("list")==0){
+                ret = sendString(sd, typedCommand);
+                if(ret < 0) {
+                    //deleteKeys();
+                    cerr<<"Error sending command" <<endl;
+                    exit(1);
+                }
 
+                ret = receiveFile(sd, "listDirectory/filelist.txt");
+                if(ret < 0) {
+                    //deleteKeys();
+                    cerr<<"Error getting the file" <<endl;
+                    exit(1);
+                }
+
+                string fileName;
+                ifstream is;
+                is.open("listDirectory/filelist.txt");
+                while(!is.eof()){
+                    getline(is, fileName);
+                    cout<<fileName;
+                }
+                is.close();
+                cout<<endl;
+                fs::remove(fs::path("listDirectory/filelist.txt"));
+
+            }
 
         }
     }
