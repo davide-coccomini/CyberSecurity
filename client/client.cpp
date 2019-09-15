@@ -13,13 +13,10 @@
 #include <openssl/pem.h>
 #include <openssl/x509_vfy.h>
 #include <openssl/err.h>
-
 #include "../const.h"
-#include "../functions.cpp"
-//#include "../functions.cpp"
+#include "../utilityFunctions.cpp"
 #include "../DH.h"
 #include <signal.h>
-
 namespace fs = std::experimental::filesystem;
 using namespace std;
 
@@ -73,7 +70,7 @@ public:
 
         //DH public key of the server
 		const BIGNUM *Yb;
-		DH_get0_key(dhSession, &Yb, NULL); //ritorna la chiave pubblica, c'è però un'altra funzione che hanno spiegato in classe che fa la stessa cosa: BIGNUM* DH_get0_pub_key(DH* dh)
+		DH_get0_key(dhSession, &Yb, NULL); //o BIGNUM* DH_get0_pub_key(DH* dh)
 
         unsigned char YbBin[SIZE_Y_DH];
 		int ret = BN_bn2bin(Yb, YbBin);
@@ -345,7 +342,7 @@ public:
             if(!verifyAndAcquireInput(typedString)){
                 continue;
             }
-
+            cout<<endl;
             if(typedCommand.compare("help")==0){
                 helpCommand();
             }
@@ -372,6 +369,7 @@ public:
 
                 string fileName;
                 ifstream is;
+                cout<<"The file present in the serever are the following:"<<endl;
                 is.open("listDirectory/filelist.txt");
                 while(!is.eof()){
                     getline(is, fileName);
@@ -382,7 +380,7 @@ public:
                 fs::remove(fs::path("listDirectory/filelist.txt"));
 
             }
-
+            cout<<endl;
         }
     }
 

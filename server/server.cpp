@@ -15,37 +15,17 @@
 #include <fstream>
 #include <unistd.h>
 #include "../const.h"
-#include "../functions.cpp"
+#include "../utilityFunctions.cpp"
 #include "../DH.h"
-#include <experimental/filesystem> //
-
+#include <experimental/filesystem>
 using namespace std;
-namespace fs = std::experimental::filesystem;//
-
-class file {
-
-	unsigned long dimension;
-	string name;
-
-	public:
-		file(string givenName, unsigned long givenDimension){
-			name = givenName;
-			dimension = givenDimension;
-		}
-		string getName(){
-			return name;
-		}
-		unsigned long getDimension(){
-			return dimension;
-		}
-};
+namespace fs = std::experimental::filesystem;
 
 class Server {
 
 	const char* allowedChars = ".-_@qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890";
 
 	vector<string> authorizedClients;
-	vector<file> files;
 
 	int clientFd;
 	int socketFd;
@@ -497,7 +477,7 @@ class Server {
 
 	}
 
-	bool verifyAndAcquireInput(string s, string comm, string fn){
+	bool verifyAndAcquireInput(string s, string &comm, string &fn){
 		if(s.length()<4){
 			cout<<"Incorrect command received."<<endl;
 			return false;
@@ -526,7 +506,6 @@ class Server {
 	void handleClient(){
 		while(true){
 			// !!! CONTROLLARE IL WARP-AROUND !!!
-			cout<<"cazzo1"<<endl;
 			//RICEVERE COMANDO
 			string receivedCommand = receiveString(clientFd);
 			if(connectionStatus != CLIENT_CONNECTED){
@@ -536,13 +515,12 @@ class Server {
 
 			string command;
 			string filename;
-			cout<<"cazzo2"<<endl;
 			if(!verifyAndAcquireInput(receivedCommand, command, filename)){
 				//comando non corretto
 				//forse bisogna rispondere
+				cout<<"verifyAndAcquireInput da false"<<endl;
 				continue;
 			}
-
 			if(command.compare("list")==0){
 				cout<<"\"list\" command received."<<endl;
 
@@ -587,15 +565,6 @@ class Server {
 		}
 	}
 
-/*	void refreshFileList(){
-		string path = "filesDirectory";
-		files.clear();
-		for (const auto & entry : fs::directory_iterator(path)){
-			file f = file(fs::file_size(entry.path()), string(entry.path().filename()));
-			files.push_back(f);
-		}
-	};
-*/
 
 };
 
