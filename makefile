@@ -4,7 +4,7 @@ CFLAGS = -Wall
 all: clientC serverC
 
 code: 
-	code server/server.cpp client/client.cpp communication.cpp &
+	code server/server.cpp client/client.cpp utilityFunctions.cpp &
 
 clientC: client
 	$(CC) $(CFLAGS) client/client.cpp -o client/client -lcrypto -lstdc++fs
