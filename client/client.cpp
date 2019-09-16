@@ -22,9 +22,6 @@ using namespace std;
 
 
 class Client {
-
-    string clientDirectory = "client/client_dir"; //DA RIVEDERE
-
     string allowedCommands[5] = {"list", "help", "quit", "download", "upload"};
     string typedCommand;
     string typedFileName;
@@ -347,7 +344,7 @@ public:
                 helpCommand();
             }
             else if(typedCommand.compare("quit")==0){
-                //delete_keys();
+                //deleteKeys();
                 X509_STORE_free(store);
                 close(sd);
                 return;

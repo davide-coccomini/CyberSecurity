@@ -23,7 +23,7 @@ namespace fs = std::experimental::filesystem;
 
 class Server {
 
-	const char* allowedChars = ".-_@qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890";
+	const char* allowedChars = ".-_qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890";
 
 	vector<string> authorizedClients;
 
@@ -508,8 +508,14 @@ class Server {
 			// !!! CONTROLLARE IL WARP-AROUND !!!
 			//RICEVERE COMANDO
 			string receivedCommand = receiveString(clientFd);
-			if(connectionStatus != CLIENT_CONNECTED){
+			if(connectionStatus == CLIENT_DISCONNECTED){
 				//eliminare chiavi di sessione
+				cout<<"Client disconnected."<<endl<<endl;
+				break;
+			}
+			if(connectionStatus == ERROR_IN_CONNECTION){
+				//eliminare chiavi di sessione
+				cout<<"Error in connection -> client disconnected."<<endl<<endl;
 				break;
 			}
 
@@ -567,14 +573,6 @@ class Server {
 
 
 };
-
-
-
-
-
-
-
-
 
 int main(){
 	system("clear");

@@ -32,8 +32,13 @@ const size_t hashSize = EVP_MD_size(md);
 const size_t ivLength = EVP_CIPHER_iv_length(EVP_aes_128_cbc());
 
 size_t counter = 0;
-unsigned char ivChar[sizeof(size_t)];
 size_t iv = 0;
+unsigned char ivChar[sizeof(size_t)];
+
+//COME CIFRARE I MESSAGGI:
+//1) ciphertext = AES128(K_sec, m)
+//2) digest = SHA256(K_aut, couter || ciphertext)
+//3) mandiamo digest || ciphertext
 
 void createDigest(unsigned char* plainText, int plainTextSize, unsigned char* digest){
 	unsigned char bufferCounter[sizeof(size_t)+plainTextSize];
@@ -75,7 +80,7 @@ int sendSize(int socket, size_t length){
 
 	// Send the message
 	int done = send(socket, (void*)&cipherText, resultLength, 0);
-	if(done < 0){
+	if(done <= 0){
 		cerr << "Error sending size" << endl;
 		explicit_bzero(plainText, sizeof(uint32_t));
 		EVP_CIPHER_CTX_free(ctx);
@@ -97,6 +102,7 @@ int sendString(int socket, string s){
 
 	size_t length = s.size() + 1;
 	int done = sendSize(socket,length);
+	if(done<0) return -1;
 
 	unsigned char plainText[length];
 	unsigned char cipherText[length+blockSize+hashSize];
@@ -170,7 +176,12 @@ uint32_t receiveSize(int socket){
 	uint32_t length;
 	int done = recv(socket, (void*)&cipherText, blockSize+hashSize, MSG_WAITALL);
 	if(done < 0){
+		connectionStatus=ERROR_IN_CONNECTION;
 		cerr<<"Error receiving size"<<endl;
+		return 0;
+	}
+	if(done==0){
+		connectionStatus=CLIENT_DISCONNECTED;
 		return 0;
 	}
 	int len = 0;
@@ -190,7 +201,7 @@ uint32_t receiveSize(int socket){
 	done = checkDigest(digest, plainText, sizeof(uint32_t));
 	if(done < 0){
 		cerr << "Error checking digest" << endl;
-		return -1;
+		return 0;
 	}
 	//iv++;
 	memcpy(ivChar, &iv, sizeof(size_t));
@@ -205,13 +216,16 @@ string receiveString(int socket){
 	unsigned char digest[hashSize];
 	string s;
 	uint32_t size = receiveSize(socket);
+	if(size == 0){ return s;}
+
 	uint32_t numBlock = (size/blockSize)+1;
 	unsigned char plainText[size];
 	unsigned char cipherText[size+blockSize+hashSize];
 	unsigned char concatenatedText[size+hashSize];
 
 	done = recv(socket, (void*)&cipherText, numBlock*blockSize+hashSize, MSG_WAITALL);
-	if(done < 0){
+	if(done <= 0){
+		connectionStatus = ERROR_IN_CONNECTION;
 		cerr << "Error receiving message" << endl;
 		return s;
 	}
@@ -265,7 +279,6 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 
 		// Send the size of the file
 		int done = sendSize(socket, fileSize);
-
 		if(done < 0){
 			cerr << "Error sending file size" << endl;
 			EVP_CIPHER_CTX_free(ctx);
@@ -341,6 +354,12 @@ int receiveFile(int socket, string fileName){
 	ofstream os;
 	os.open(fileName);
 	if(os) {
+		int fileSize = receiveSize(socket);
+		if(fileSize <=0){
+			fs::remove(fs::path(fileName));
+			return -1;
+		}
+
 		unsigned char cipherText[BUFFER_SIZE+blockSize+hashSize];
 		unsigned char plainText[BUFFER_SIZE];
 		unsigned char digest[hashSize];
@@ -348,8 +367,6 @@ int receiveFile(int socket, string fileName){
 
 		EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 		EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivChar);
-		int fileSize = receiveSize(socket);
-
 		// Calculate the number of blocks to be received
 		int blocks = (fileSize / BUFFER_SIZE);
 		int lastBlockSize = fileSize - (BUFFER_SIZE * blocks);
