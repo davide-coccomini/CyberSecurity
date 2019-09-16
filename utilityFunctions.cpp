@@ -52,13 +52,13 @@ void createDigest(unsigned char* cipherText, int cipherTextSize, unsigned char* 
 int sendSize(int socket, size_t length){
 
 	unsigned char plainText[sizeof(uint32_t)];
-	unsigned char cipherText[hashSize+blockSize];
-	unsigned char concatenatedText[sizeof(uint32_t)+hashSize+blockSize];
+	unsigned char cipherText[blockSize];
+	unsigned char concatenatedText[hashSize+blockSize];
 	unsigned char digest[hashSize];
 
 	uint32_t messageLength = htonl(length);
 	memcpy(plainText, &messageLength, sizeof(uint32_t));
-
+	
 	// Generate the cipherText
 	int tmpLength = 0;
 	int resultLength = 0;
@@ -75,6 +75,8 @@ int sendSize(int socket, size_t length){
 	memcpy(concatenatedText+resultLength, digest, hashSize);
 
 	// Send the message
+	cout<<"Sent concatenated text "<< concatenatedText<<endl;
+	cout<<"Digest inviato "<< digest<<endl;
 	int done = send(socket, (void*)&concatenatedText, resultLength+hashSize, 0);
 	if(done <= 0){
 		cerr << "Error sending size" << endl;
@@ -159,7 +161,8 @@ int checkDigest(unsigned char* receivedDigest, unsigned char* message, int lengt
 	HMAC_Update(ctx, bufferCounter, sizeof(size_t) + length);
 	HMAC_Final(ctx, digest, (unsigned int*)&hashSize);
 	HMAC_CTX_free(ctx);
-
+	cout<<"REceived digest: "<<receivedDigest<<endl;
+	cout<<"Digest: "<<digest<<endl;
 	// Checking if digest is correct
 	done = CRYPTO_memcmp(digest, receivedDigest, hashSize);
 	if(done != 0){
@@ -172,11 +175,11 @@ int checkDigest(unsigned char* receivedDigest, unsigned char* message, int lengt
 
 uint32_t receiveSize(int socket){
 	unsigned char plainText[sizeof(uint32_t)];
-	unsigned char cipherText[blockSize+sizeof(uint32_t)];
-	unsigned char concatenatedText[sizeof(uint32_t)+hashSize+blockSize];
+	unsigned char cipherText[blockSize];
+	unsigned char concatenatedText[hashSize+blockSize];
 	unsigned char digest[hashSize];
 	uint32_t length;
-	int done = recv(socket, (void*)&concatenatedText, sizeof(uint32_t)+hashSize+blockSize, MSG_WAITALL);
+	int done = recv(socket, (void*)&concatenatedText, hashSize+blockSize, MSG_WAITALL);
 	if(done < 0){
 		connectionStatus=ERROR_IN_CONNECTION;
 		cerr<<"Error receiving size"<<endl;
@@ -187,13 +190,13 @@ uint32_t receiveSize(int socket){
 		return 0;
 	}
 	int len = 0;
-
+	cout<<"Concatenated text received: "<<concatenatedText<<endl;
 	// Split the message
-	memcpy(cipherText, concatenatedText,sizeof(uint32_t)+blockSize);
-	memcpy(digest, concatenatedText + sizeof(uint32_t)+blockSize, hashSize);
+	memcpy(cipherText, concatenatedText, sizeof(uint32_t));
+	memcpy(digest, concatenatedText + sizeof(uint32_t), hashSize);
 
 	// Check the digest
-	done = checkDigest(digest, cipherText, blockSize+sizeof(uint32_t));
+	done = checkDigest(digest, cipherText, blockSize);
 	if(done < 0){
 		cerr << "Error checking digest" << endl;
 		return 0;
@@ -202,7 +205,7 @@ uint32_t receiveSize(int socket){
 	// Decrypt message
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new(); 
 	EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivChar);
-	EVP_DecryptUpdate(ctx, plainText, &len, cipherText, blockSize+sizeof(uint32_t));
+	EVP_DecryptUpdate(ctx, plainText, &len, cipherText, blockSize);
 	EVP_DecryptFinal(ctx, plainText+len, &len);
 	EVP_CIPHER_CTX_free(ctx);
 	
@@ -226,7 +229,7 @@ string receiveString(int socket){
 	unsigned char plainText[size];
 	unsigned char cipherText[size+blockSize];
 	unsigned char concatenatedText[size+blockSize+hashSize];
-
+	
 	done = recv(socket, (void*)&concatenatedText, numBlock*blockSize+hashSize, MSG_WAITALL);
 	if(done <= 0){
 		connectionStatus = ERROR_IN_CONNECTION;
