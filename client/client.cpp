@@ -404,7 +404,7 @@ public:
                     exit(1);
                 }
                 if(serverResponse == FILE_NOT_PRESENT){
-                    cerr << "The file requested is not present in the server." << endl;
+                    cerr << "The file requested is not found on the server." << endl;
                     continue;
                 }
                 else if(serverResponse == FILE_TOO_LONG) {
@@ -448,11 +448,11 @@ public:
 					}
 				}
                 if(statusFile == FILE_NOT_PRESENT){
-                    cout<<"File not present."<<endl;
+                    cout<<"File not found."<<endl;
                     continue;
                 }
                 if(statusFile == FILE_TOO_LONG){
-                    cout<<"File too long to bi sent."<<endl;
+                    cout<<"File too long to be sent."<<endl;
                     continue;
                 }
 
