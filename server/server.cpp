@@ -560,10 +560,75 @@ class Server {
 			else if(command.compare("download")==0){
 				cout<<"\"download\" command received."<<endl;
 
+				if(strspn(filename.c_str(), allowedChars) < strlen(filename.c_str())) {
+					cerr<<"Name of file not valid!"<<endl;
+					int ret = sendSize(clientFd, FILENAME_NOT_VALID);
+					if(ret<0) cout<<"Errori in responding to client."<<endl;
+					continue;
+				}
+				string path = "filesDirectory";
+
+				//ceck if the file is persent
+				int statusFile= FILE_NOT_PRESENT;
+				size_t length;
+				for (const auto & entry : fs::directory_iterator(path)){
+					if(string(entry.path().filename()).compare(filename) == 0){
+						length = fs::file_size(entry.path());
+						//ceck size
+						if(fs::file_size(entry.path()) < MAX_FILE_SIZE){
+							statusFile = FILE_PRESENT;
+						}else{
+							statusFile = FILE_TOO_LONG;
+						}
+						break;
+					}
+				}
+				int ret = sendSize(clientFd, statusFile);
+				if(ret < 0){
+					cout<<"Error in responding to server."<<endl;
+					connectionStatus = CLIENT_DISCONNECTED;
+					continue;
+				}
+
+				if(statusFile == FILE_NOT_PRESENT) {
+					cerr << "File " << filename << " not found"<<endl;
+					continue;
+				}
+				else if (statusFile == FILE_TOO_LONG) {
+					cerr << "File " << filename << " too long"<<endl;
+					continue;
+				}
+				else { //the required file is present
+					path = path +"/"+ filename;
+					int ret = sendFile(clientFd, path, length);
+					if(ret < 0) {
+						continue;
+					}
+				}
 			}
+
 			else if(command.compare("upload")==0){
 				cout<<"\"upload\" command received."<<endl;
-
+				cout<<"cazzo1"<<endl;
+				if(strspn(filename.c_str(), allowedChars) < strlen(filename.c_str())) {
+					cerr<<"Name of file not valid!"<<endl;
+					int ret = sendSize(clientFd, FILENAME_NOT_VALID);
+					if(ret<0) cout<<"Error in responding to client."<<endl;
+					continue;
+				}cout<<"cazzo2"<<endl;
+				int ret = sendSize(clientFd, OK);
+				if(ret<0) cout<<"Error in responding to client."<<endl;
+cout<<"cazzo3"<<endl;
+				string pathTemporanyFile = "temporanyFile/"+filename;
+				ret = receiveFile(clientFd, pathTemporanyFile);
+				if(ret < 0) {
+					continue;
+				}
+cout<<"cazzo4"<<endl;
+				fs::copy(fs::path(pathTemporanyFile), fs::path("filesDirectory/" + filename), fs::copy_options::overwrite_existing);
+				fs::remove(fs::path(pathTemporanyFile));
+cout<<"cazzo5"<<endl;
+				cout<<"File "+filename+" received succesfully."<<endl;
 			}
 			else{
 				cout<<"Unknown command received!"<<endl;

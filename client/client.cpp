@@ -23,6 +23,8 @@ using namespace std;
 
 class Client {
     string allowedCommands[5] = {"list", "help", "quit", "download", "upload"};
+    const char* allowedChars = ".-_qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890";
+
     string typedCommand;
     string typedFileName;
 
@@ -33,6 +35,8 @@ class Client {
 
     sockaddr_in svAddr;
     int sd;
+
+    const string SERVER_NAME = "/C=IT/CN=Server";
 
 public:
     Client(){
@@ -270,6 +274,17 @@ public:
 		}
 		X509_STORE_CTX_free(certCtx);
 
+        //verifica se il server è quello corretto
+		X509_NAME *sn = X509_get_subject_name(receivedCertificate);
+		char *tempVar = X509_NAME_oneline(sn, NULL, 0);
+		string serverName = string(tempVar);
+		free(tempVar);
+        if(serverName.compare(SERVER_NAME) != 0){
+		    EVP_PKEY_free(privateKey);
+			cerr << "ERROR: the server io not the legittimate one!" << endl;
+			exit(1);
+		}
+
         //Decifriamo il ciphertext
         unsigned char receivedSign[EVP_PKEY_size(privateKey)+(int)blockSize];
 		int plainlen, outlen;
@@ -375,6 +390,99 @@ public:
                 is.close();
                 cout<<endl;
                 fs::remove(fs::path("listDirectory/filelist.txt"));
+
+            }
+            else if(typedCommand.compare("download")==0){
+                string toSend = typedCommand+" "+typedFileName;
+                ret = sendString(sd, toSend);
+                if(ret < 0) {
+                    //deleteKeys();
+                    cerr<<"Error sending command" <<endl;
+                    exit(1);
+                }
+                int serverResponse = receiveSize(sd);
+                if(receiveSize<=0){
+                    cerr<<"Error in receiving response to server" <<endl;
+                    exit(1);
+                }
+                if(serverResponse == FILE_NOT_PRESENT){
+                    cerr << "The file requested is not present in the server." << endl;
+                    continue;
+                }
+                else if(serverResponse == FILE_TOO_LONG) {
+                    cerr << "The file requested is too long." << endl;
+                    continue;
+                }
+                else if(serverResponse == FILE_PRESENT){
+                    typedFileName =  "filesDirectory/" + typedFileName;
+                    int ret = receiveFile(sd, typedFileName);
+                    if(ret < 0) {
+                        //deleteKeys();
+                        cerr<<"Error in downloading the file." <<endl;
+                        exit(1);
+                    }
+                    cout<<"File received correctly!"<<endl;
+                }
+
+            }
+            else if(typedCommand.compare("upload")==0){
+
+                //ceck if the name is allowed
+                if(strspn(typedFileName.c_str(), allowedChars) < strlen(typedFileName.c_str())) {
+					cerr<<"Name of file not valid!"<<endl;
+					continue;
+				}
+				string path = "filesDirectory";
+
+				//ceck if the file is persent
+				int statusFile= FILE_NOT_PRESENT;
+				size_t length;
+				for (const auto & entry : fs::directory_iterator(path)){
+					if(string(entry.path().filename()).compare(typedFileName) == 0){
+						length = fs::file_size(entry.path());
+						//ceck size
+						if(fs::file_size(entry.path()) < MAX_FILE_SIZE){
+							statusFile = FILE_PRESENT;
+						}else{
+							statusFile = FILE_TOO_LONG;
+						}
+						break;
+					}
+				}
+                if(statusFile == FILE_NOT_PRESENT){
+                    cout<<"File not present."<<endl;
+                    continue;
+                }
+                if(statusFile == FILE_TOO_LONG){
+                    cout<<"File too long to bi sent."<<endl;
+                    continue;
+                }
+
+                string toSend = typedCommand+" "+typedFileName;
+                ret = sendString(sd, toSend);
+                if(ret < 0) {
+                    //deleteKeys();
+                    cerr<<"Error sending command" <<endl;
+                    exit(1);
+                }
+
+                int serverResponse = receiveSize(sd);
+                if(receiveSize<=0){
+                    cerr<<"Error in receiving response to server." <<endl;
+                    exit(1);
+                }
+                if(serverResponse == OK){
+                    typedFileName = "filesDirectory/"+typedFileName;
+                    ret = sendFile(sd, typedFileName, length);
+                    if(ret < 0) {
+                        //deleteKeys();
+                        cerr<<"Error in sending file." <<endl;
+                        exit(1);
+                    }
+                    cout<<"File sent correctly!"<<endl;
+                }else{
+                    cout<<"Name of file not valid!"<<endl;
+                }
 
             }
             cout<<endl;
