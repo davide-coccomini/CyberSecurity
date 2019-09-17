@@ -619,14 +619,14 @@ class Server {
 				int ret = sendSize(clientFd, OK);
 				if(ret<0) cout<<"Error in responding to client."<<endl;
 cout<<"cazzo3"<<endl;
-				string pathTemporanyFile = "temporanyFile/"+filename;
-				ret = receiveFile(clientFd, pathTemporanyFile);
+				string pathtemporaryFile = "temporaryFile/"+filename;
+				ret = receiveFile(clientFd, pathtemporaryFile);
 				if(ret < 0) {
 					continue;
 				}
 cout<<"cazzo4"<<endl;
-				fs::copy(fs::path(pathTemporanyFile), fs::path("filesDirectory/" + filename), fs::copy_options::overwrite_existing);
-				fs::remove(fs::path(pathTemporanyFile));
+				fs::copy(fs::path(pathtemporaryFile), fs::path("filesDirectory/" + filename), fs::copy_options::overwrite_existing);
+				fs::remove(fs::path(pathtemporaryFile));
 cout<<"cazzo5"<<endl;
 				cout<<"File "+filename+" received succesfully."<<endl;
 			}
