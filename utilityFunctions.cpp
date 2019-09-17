@@ -65,7 +65,7 @@ void createDigest(unsigned char* ct, int ctSize, unsigned char* digest){
 	HMAC_Final(ctx, digest, (unsigned int*)&hashSize);
 	HMAC_CTX_free(ctx);
 }
-
+/*
 int sendSize(int socket, size_t length){
 
 	unsigned char plainText[sizeof(uint32_t)];
@@ -109,7 +109,7 @@ int sendSize(int socket, size_t length){
 
 	return 0;
 }
-/*
+*/
 int sendSize(int socket, size_t length){
 
 	unsigned char plainText[sizeof(uint32_t)];
@@ -131,10 +131,19 @@ int sendSize(int socket, size_t length){
 
 	// Create the digest
 	createDigest(cipherText, blockSize, digest);
+	
+	cout<<"cipherTExt"<<endl;
+	BIO_dump_fp(stdout,(char*)cipherText,resultLength);
+	cout<<"Digest"<<endl;
+	BIO_dump_fp(stdout,(char*)digest,hashSize);
 
 	memcpy(concatenatedText, cipherText, blockSize);
 	memcpy(concatenatedText+blockSize, digest, hashSize);
 
+	
+	cout<<"concatenatedText"<<endl;
+	BIO_dump_fp(stdout,(char*)concatenatedText,hashSize+blockSize);
+	cout<<"Mando: "<<blockSize+hashSize<<endl;
 	// Send the message
 	int done = send(socket, (void*)&concatenatedText, blockSize+hashSize, 0);
 	if(done <= 0){
@@ -151,7 +160,7 @@ int sendSize(int socket, size_t length){
 	EVP_CIPHER_CTX_free(ctx);
 	return 0;
 }
-*/
+
 
 /*
 int sendString(int socket, string s){
@@ -295,7 +304,7 @@ int checkDigest(unsigned char* receivedDigest, unsigned char* ct, int ctSize){
 	//counter++;
 	return 0;
 }
-
+/*
 uint32_t receiveSize(int socket){
 	unsigned char plainText[sizeof(uint32_t)];
 	unsigned char cipherText[blockSize+hashSize];
@@ -337,15 +346,16 @@ uint32_t receiveSize(int socket){
 
 	return (uint32_t)ntohl(length);
 }
-/*
+*/
 uint32_t receiveSize(int socket){
-	unsigned char plainText[sizeof(uint32_t)];
+	unsigned char plainText[blockSize];
 	unsigned char cipherText[blockSize];
 	unsigned char concatenatedText[blockSize+hashSize];
 	unsigned char digest[hashSize];
 	uint32_t length;
+cout<<"RIcevo: "<<blockSize+hashSize<<endl;
 	int done = recv(socket, (void*)&concatenatedText, blockSize+hashSize, MSG_WAITALL);
-	cout<<"aaaaaaaaaaaaaaaaaaaaaaaaaaaaa"<<endl;
+
 	if(done < 0){
 		connectionStatus=ERROR_IN_CONNECTION;
 		cerr<<"Error receiving size"<<endl;
@@ -353,21 +363,26 @@ uint32_t receiveSize(int socket){
 	}
 	if(done==0){
 		connectionStatus=CLIENT_DISCONNECTED;
-		cout<<"bbbbbbbbbbbbbbbbbbbbbbb"<<endl;
 		return 0;
 	}
 	int len = 0;
-
 	// Split the message
 	memcpy(cipherText, concatenatedText,blockSize);
 	memcpy(digest, concatenatedText + blockSize, hashSize);
 
+
+	cout<<"concatenatedText"<<endl;
+	//BIO_dump_fp(stdout,(char*)concatenatedText,hashSize+blockSize);
+	cout<<"cipherTExt"<<endl;
+	//BIO_dump_fp(stdout,(char*)cipherText,blockSize);
+	cout<<"Digest"<<endl;
+	//BIO_dump_fp(stdout,(char*)digest,hashSize);
 	done = checkDigest(digest, cipherText, blockSize);
 	if(done < 0){
 		cerr << "Error checking digest" << endl;
 		return 0;
 	}
-	cout<<"DIGEST OK!"<<endl;
+
 	// Decrypt message
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 	EVP_DecryptInit(ctx, EVP_aes_128_cbc(), securityKey, ivChar);
@@ -375,15 +390,17 @@ uint32_t receiveSize(int socket){
 	EVP_DecryptFinal(ctx, plainText+len, &len);
 	EVP_CIPHER_CTX_free(ctx);
 
-
+	BIO_dump_fp(stdout,(char*)plainText,sizeof(uint32_t));
 	memcpy(&length, plainText, sizeof(uint32_t));
-
+	cout<<sizeof(ntohl(length))<<endl;
 	//iv++;
 	//memcpy(ivChar, &iv, sizeof(size_t));
-	//explicit_bzero(plainText, sizeof(uint32_t));
-	cout<<"lunghezza ricevuta = "<<ntohl(length)<<endl;
+	explicit_bzero(plainText, sizeof(uint32_t));
+	explicit_bzero(concatenatedText, hashSize+blockSize);
+	explicit_bzero(cipherText, blockSize);
+	explicit_bzero(digest, hashSize);
 	return (uint32_t)ntohl(length);
-}*/
+}
 /*
 string receiveString(int socket){
 	int done, length = 0;
@@ -431,6 +448,7 @@ string receiveString(int socket){
 	unsigned char digest[hashSize];
 	string s;
 	uint32_t sizePt = receiveSize(socket);
+cout<<"SOno fuori dalla receivesize!!!!!"<<endl;
 	if(sizePt == 0){ return s;}
 
 	uint32_t numBlock = (sizePt/blockSize)+1;
@@ -765,7 +783,7 @@ int receiveFile(int socket, string fileName){
 	ofstream os;
 	os.open(fileName);
 	if(os) {
-		int fileSize = receiveSize(socket);
+		uint32_t fileSize = receiveSize(socket);
 		if(fileSize <=0){
 			fs::remove(fs::path(fileName));
 			return -1;
@@ -964,3 +982,4 @@ void deleteKeys() {
     explicit_bzero(authenticationKey, EVP_MD_size(EVP_sha256()));
     free(authenticationKey);
 }
+
