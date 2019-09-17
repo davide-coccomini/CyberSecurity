@@ -218,7 +218,6 @@ public:
             cerr << "Error sending M2" <<endl;//DA RIVEDERE
             exit(1);
         }
-        cout<<"!!!!! M2 INVIATO !!!!!"<<endl;
 
         //M3
 
@@ -335,7 +334,6 @@ public:
             exit(1);
 		}
 		EVP_MD_CTX_free(mdctx);
-		cout<<"verifica di M3 andata a buon fine"<<endl;
 
     }
 
@@ -381,7 +379,7 @@ public:
 
                 string fileName;
                 ifstream is;
-                cout<<"The file present in the serever are the following:"<<endl;
+                cout<<"The files on the server are the following:"<<endl;
                 is.open("listDirectory/filelist.txt");
                 while(!is.eof()){
                     getline(is, fileName);

@@ -297,7 +297,6 @@ class Server {
         }
 
 		BN_free(Yb);
-		cout<<"Kab CALCOLATA!"<<endl;
 
 		ret = builtSessionKeys(Kab, BN_num_bytes(p));
 		if(ret < 0){
@@ -361,7 +360,6 @@ class Server {
 			return -1;
 		}
 		EVP_MD_CTX_free(mdctx);
-		cout<<"verifica di M2 andata a buon fine"<<endl;
 
 		//M3
 
@@ -445,7 +443,6 @@ class Server {
             cerr << "Error sending M2" <<endl;//DA RIVEDERE
             exit(1);
         }
-		cout<<"M3 inviato."<<endl;
 	return 0;
 	}
 
@@ -539,13 +536,21 @@ class Server {
 				for (const auto & entry : fs::directory_iterator(path)){
 					filename = "name: "+string(entry.path().filename())+" -- dimension: "+to_string(fs::file_size(entry.path()))+"\t";
 					os.write(filename.c_str(), filename.size()+1);
-	            }
-				os.close();
+	            		}	
 
 				//leggo dimensione file
+				
+				os.close();				
 				path = "listDirectory/filelist.txt";
 				size_t filelistSize = fs::file_size(path);
-
+				
+				if(filelistSize == 0){
+					os.open("listDirectory/filelist.txt");
+					string text = "No files found on the server.";
+					os.write(text.c_str(), text.size()+1);
+					os.close();
+					filelistSize = fs::file_size(path);		
+				}
 				//invio filelist.txt
 				int ret = sendFile(clientFd, path, filelistSize);
 				fs::remove(fs::path("listDirectory/filelist.txt"));
@@ -609,25 +614,21 @@ class Server {
 
 			else if(command.compare("upload")==0){
 				cout<<"\"upload\" command received."<<endl;
-				cout<<"cazzo1"<<endl;
 				if(strspn(filename.c_str(), allowedChars) < strlen(filename.c_str())) {
 					cerr<<"Name of file not valid!"<<endl;
 					int ret = sendSize(clientFd, FILENAME_NOT_VALID);
 					if(ret<0) cout<<"Error in responding to client."<<endl;
 					continue;
-				}cout<<"cazzo2"<<endl;
 				int ret = sendSize(clientFd, OK);
 				if(ret<0) cout<<"Error in responding to client."<<endl;
-cout<<"cazzo3"<<endl;
+
 				string pathtemporaryFile = "temporaryFile/"+filename;
 				ret = receiveFile(clientFd, pathtemporaryFile);
 				if(ret < 0) {
 					continue;
 				}
-cout<<"cazzo4"<<endl;
 				fs::copy(fs::path(pathtemporaryFile), fs::path("filesDirectory/" + filename), fs::copy_options::overwrite_existing);
 				fs::remove(fs::path(pathtemporaryFile));
-cout<<"cazzo5"<<endl;
 				cout<<"File "+filename+" received succesfully."<<endl;
 			}
 			else{

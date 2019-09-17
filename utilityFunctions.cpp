@@ -178,7 +178,6 @@ uint32_t receiveSize(int socket){
 	int done = recv(socket, (void*)&concatenatedText, blockSize+hashSize, MSG_WAITALL);
 	if(done < 0){
 		connectionStatus=ERROR_IN_CONNECTION;
-		cerr<<"Error receiving size"<<endl;
 		return 0;
 	}
 	if(done==0){
