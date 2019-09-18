@@ -450,10 +450,6 @@ class Server {
 	void startToRun(){
 		while(true){
 			connectionStatus = CLIENT_DISCONNECTED;
-			if(counter + 1 > SECURITY_NUMBER){ // Warp around check
-				cout<<"Session expired"<<endl;
-				return;
-			}
 
 			unsigned int len = sizeof(clientAddress);
 			clientFd = accept(socketFd, (struct sockaddr*)&clientAddress, (socklen_t*)&len);
@@ -482,6 +478,7 @@ class Server {
 
 	bool verifyAndAcquireInput(string s, string &comm, string &fn){
 		if(s.length()<4){
+            		deleteKeys();
 			cout<<"Incorrect command received."<<endl;
 			return false;
 		}
@@ -490,10 +487,8 @@ class Server {
 
 		int commandLen = s.find(' ', 0);
 		if(commandLen<0){
-			//nessuno spazio presente
 			command = s;
 		}else if((commandLen>=0 && commandLen<4) || (commandLen==((int)s.length()-1))){
-			//il primo spazio è nelle prime 4 posizioni o per ultimo
 			cout<<"Incorrect command received."<<endl;
 			return false;
 		}else{
@@ -508,16 +503,20 @@ class Server {
 
 	void handleClient(){
 		while(true){
-			// !!! CONTROLLARE IL WARP-AROUND !!!
+			if(counter + 1 > SECURITY_NUMBER){ // Warp around check
+				deleteKeys();
+				cout<<"Session expired"<<endl;
+				return;
+			}
 			//RICEVERE COMANDO
 			string receivedCommand = receiveString(clientFd);
 			if(connectionStatus == CLIENT_DISCONNECTED){
-				//eliminare chiavi di sessione
+				deleteKeys();
 				cout<<"Client disconnected."<<endl<<endl;
 				break;
 			}
 			if(connectionStatus == ERROR_IN_CONNECTION){
-				//eliminare chiavi di sessione
+				deleteKeys();
 				cout<<"Error in connection -> client disconnected."<<endl<<endl;
 				break;
 			}
@@ -525,10 +524,9 @@ class Server {
 			string command;
 			string filename;
 			if(!verifyAndAcquireInput(receivedCommand, command, filename)){
-				//comando non corretto
-				//forse bisogna rispondere
-				cout<<"verifyAndAcquireInput da false"<<endl;
-				continue;
+				deleteKeys();
+				cout<<"Invalid command received"<<endl;
+				break;
 			}
 			if(command.compare("list")==0){
 				cout<<"\"list\" command received."<<endl;
@@ -544,7 +542,6 @@ class Server {
 					os.write(filename.c_str(), filename.size()+1);
 	            		}
 
-				//leggo dimensione file
 
 				os.close();
 				path = "listDirectory/filelist.txt";
@@ -557,7 +554,7 @@ class Server {
 					os.close();
 					filelistSize = fs::file_size(path);
 				}
-				//invio filelist.txt
+				// Send filelist.txt
 				int ret = sendFile(clientFd, path, filelistSize);
 				fs::remove(fs::path("listDirectory/filelist.txt"));
 				if(ret < 0) {
@@ -579,13 +576,13 @@ class Server {
 				}
 				string path = "filesDirectory";
 
-				//ceck if the file is persent
+				// Check if the file exists
 				int statusFile= FILE_NOT_PRESENT;
 				size_t length;
 				for (const auto & entry : fs::directory_iterator(path)){
 					if(string(entry.path().filename()).compare(filename) == 0){
 						length = fs::file_size(entry.path());
-						//ceck size
+						// Check size
 						if(fs::file_size(entry.path()) < MAX_FILE_SIZE){
 							statusFile = FILE_PRESENT;
 						}else{
@@ -596,6 +593,7 @@ class Server {
 				}
 				int ret = sendSize(clientFd, statusFile);
 				if(ret < 0){
+					deleteKeys();
 					cout<<"Error in responding to server."<<endl;
 					connectionStatus = CLIENT_DISCONNECTED;
 					continue;
@@ -609,7 +607,7 @@ class Server {
 					cerr << "File " << filename << " too long"<<endl;
 					continue;
 				}
-				else { //the required file is present
+				else { //the required file exists
 					path = path +"/"+ filename;
 					int ret = sendFile(clientFd, path, length);
 					if(ret < 0) {
