@@ -289,7 +289,6 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 		}else{
 			blocks++;
 		}
-
 		unsigned char cipherText[BUFFER_SIZE+blockSize];
 		unsigned char plainText[BUFFER_SIZE];
 		unsigned char digest[hashSize];
@@ -302,7 +301,8 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 			EVP_CIPHER_CTX_free(ctx);
 			return -1;
 		}
-		for(size_t i=0; i<(size_t)blocks-1; i++){//--------------------------------------------------------------------
+		for(size_t i=0; i<(size_t)blocks-1; i++){
+		
 			explicit_bzero(cipherText, BUFFER_SIZE+blockSize);
 			explicit_bzero(concatenatedText, hashSize+BUFFER_SIZE+blockSize);
 			explicit_bzero(plainText, BUFFER_SIZE);
@@ -311,24 +311,26 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 			// Read the block to be sent
 			is.read((char*)plainText, BUFFER_SIZE);
 
-			// Create the digest and concatenate
-			createDigest(plainText, BUFFER_SIZE, digest);
-			memcpy(concatenatedText, plainText, BUFFER_SIZE);
-			memcpy(concatenatedText+BUFFER_SIZE, digest, hashSize);
-
 			// Generate the cipherText
-			EVP_EncryptUpdate(ctx, cipherText, &tmpLength, concatenatedText, BUFFER_SIZE+hashSize);
-
+			EVP_EncryptUpdate(ctx, cipherText, &tmpLength, plainText, BUFFER_SIZE);
+			
+			// Create the digest and concatenate
+			createDigest(cipherText, tmpLength, digest);
+			memcpy(concatenatedText, cipherText, tmpLength);
+			memcpy(concatenatedText+tmpLength, digest, hashSize);
+		
+			
 			// Send the block
-			done = send(socket, (void*)&cipherText, tmpLength, 0);
+			done = send(socket, (void*)&concatenatedText, tmpLength+hashSize, 0);
 			if(done < 0){
 				cerr << "Error sending block" << endl;
 				explicit_bzero(plainText, BUFFER_SIZE);
 				EVP_CIPHER_CTX_free(ctx);
 				return -1;
 			}
-			//counter++;
+			counter++;
 		}
+
 		// Send the last block
 		explicit_bzero(cipherText, BUFFER_SIZE+blockSize);
 		explicit_bzero(concatenatedText, hashSize+BUFFER_SIZE+blockSize);
@@ -346,9 +348,7 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 		createDigest(cipherText, resultLength, digest);
 		memcpy(concatenatedText, cipherText, resultLength);
 		memcpy(concatenatedText+resultLength, digest, hashSize);
-
-
-
+		
 		// Send the block
 		done = send(socket, (void*)&concatenatedText, resultLength+hashSize, 0);
 		if(done < 0){
@@ -386,7 +386,7 @@ int receiveFile(int socket, string fileName){
 		}
 
 		unsigned char cipherText[BUFFER_SIZE+blockSize];
-		unsigned char plainText[BUFFER_SIZE];
+		unsigned char plainText[BUFFER_SIZE+blockSize];
 		unsigned char digest[hashSize];
 		unsigned char concatenatedText[BUFFER_SIZE+blockSize+hashSize];
 
@@ -399,39 +399,43 @@ int receiveFile(int socket, string fileName){
 		}else{
 			blocks++;
 		}
+
+
 		for(size_t i=0; i<(size_t)blocks-1; i++){
 			explicit_bzero(cipherText, BUFFER_SIZE+blockSize);
-			explicit_bzero(plainText, BUFFER_SIZE);
+			explicit_bzero(plainText, BUFFER_SIZE+blockSize);
 			explicit_bzero(concatenatedText, hashSize+BUFFER_SIZE+blockSize);
 			explicit_bzero(digest, hashSize);
-			done = recv(socket, (void*)&cipherText, ((BUFFER_SIZE/blockSize)+1)*blockSize+hashSize, MSG_WAITALL);
+			
+
+			done = recv(socket, (void*)&concatenatedText, BUFFER_SIZE+hashSize, MSG_WAITALL);
 			if(done < 0){
 				cerr << "Error receiving block" << endl;
 				fs::remove(fs::path(fileName));
-				explicit_bzero(cipherText, BUFFER_SIZE+blockSize);
+				explicit_bzero(concatenatedText, BUFFER_SIZE+blockSize+hashSize);
 				EVP_CIPHER_CTX_free(ctx);
 				return -1;
 			}
 
 			length = 0;
-			// Decrypt message
-			EVP_DecryptUpdate(ctx, concatenatedText, &length, cipherText, ((BUFFER_SIZE/blockSize)+1)*blockSize+hashSize);
-
 			// Split the message
-			memcpy(plainText, concatenatedText, BUFFER_SIZE);
+			memcpy(cipherText, concatenatedText, BUFFER_SIZE);
 			memcpy(digest, concatenatedText + BUFFER_SIZE, hashSize);
 
-			done = checkDigest(digest, plainText, BUFFER_SIZE);
+			done = checkDigest(digest, cipherText,  BUFFER_SIZE);
 			if(done < 0){
 				cerr << "Error checking digest" << endl;
 				return -1;
 			}
-			//counter++;
-		}
 
+			// Decrypt message
+			EVP_DecryptUpdate(ctx, plainText, &length, cipherText, BUFFER_SIZE);
+			os.write((char*)plainText, BUFFER_SIZE);
+			counter++;
+		}
 		// Receive the last block
 		explicit_bzero(cipherText, BUFFER_SIZE+blockSize);
-		explicit_bzero(plainText, BUFFER_SIZE);
+		explicit_bzero(plainText, BUFFER_SIZE+blockSize);
 		explicit_bzero(concatenatedText, hashSize+blockSize+BUFFER_SIZE);
 		explicit_bzero(digest, hashSize);
 
@@ -448,7 +452,7 @@ int receiveFile(int socket, string fileName){
 		// Split the message
 		memcpy(cipherText, concatenatedText,((lastBlockSize/blockSize)+1)*blockSize);
 		memcpy(digest, concatenatedText + ((lastBlockSize/blockSize)+1)*blockSize, hashSize);
-
+		
 		done = checkDigest(digest, cipherText, ((lastBlockSize/blockSize)+1)*blockSize);
 		if(done < 0){
 			cerr << "Error checking digest" << endl;
@@ -456,11 +460,11 @@ int receiveFile(int socket, string fileName){
 		}
 
 		// Decrypt message
-		EVP_DecryptUpdate(ctx, plainText, &length, cipherText, ((lastBlockSize/blockSize)+1)*blockSize+hashSize);
+		EVP_DecryptUpdate(ctx, plainText, &length, cipherText, lastBlockSize);
 		EVP_DecryptFinal(ctx, plainText+length, &length);
 		EVP_CIPHER_CTX_free(ctx);
 		os.write((char*)plainText, lastBlockSize);
-
+		
 		ivCounter++;
 		createNextIV(ivCounter, iv);
 		counter++;
