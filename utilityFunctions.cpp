@@ -35,10 +35,6 @@ size_t counter = 0;
 size_t ivCounter = 0;
 unsigned char *iv;
 
-//COME CIFRARE I MESSAGGI:
-//1) ciphertext = AES128(K_sec, m)
-//2) digest = SHA256(K_aut, counter || ciphertext)
-//3) mandiamo digest || ciphertext
 
 void createNextIV(size_t ivCounter, unsigned char* iv){
 	unsigned char ivChar[sizeof(size_t)];
@@ -271,6 +267,7 @@ string receiveString(int socket){
 }
 
 int sendFile(int socket, string fileName, uint32_t fileSize){
+	
 	ifstream is;
 	is.open(fileName);
 	if(is){

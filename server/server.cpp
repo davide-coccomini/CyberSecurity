@@ -450,6 +450,10 @@ class Server {
 	void startToRun(){
 		while(true){
 			connectionStatus = CLIENT_DISCONNECTED;
+			if(counter + 1 > SECURITY_NUMBER){ // Warp around check
+				cout<<"Session expired"<<endl;
+				return;
+			}
 
 			unsigned int len = sizeof(clientAddress);
 			clientFd = accept(socketFd, (struct sockaddr*)&clientAddress, (socklen_t*)&len);
@@ -536,8 +540,8 @@ class Server {
 				string path ="filesDirectory";
 
 				for (const auto & entry : fs::directory_iterator(path)){
-					filename = "name: "+string(entry.path().filename())+" -- dimension: "+to_string(fs::file_size(entry.path()))+"\t";
-					os.write(filename.c_str(), filename.size()+1);
+					filename = "name: "+string(entry.path().filename())+" -- dimension: "+to_string(fs::file_size(entry.path()));
+					os.append(filename.c_str(), filename.size()+1);
 	            		}
 
 				//leggo dimensione file
@@ -632,7 +636,7 @@ class Server {
 				}
 				fs::copy(fs::path(pathtemporaryFile), fs::path("filesDirectory/" + filename), fs::copy_options::overwrite_existing);
 				fs::remove(fs::path(pathtemporaryFile));
-				cout<<"File "+filename+" received succesfully."<<endl;
+				cout<<"File "+filename+" received successfully."<<endl;
 			}
 			else{
 				cout<<"Unknown command received!"<<endl;

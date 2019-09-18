@@ -6,6 +6,8 @@
 
 #define MAX_FILE_SIZE 4294967296 // 4 giga (2^32)
 
+#define SECURITY_NUMBER 4286578685 // 2^32 - (MAX_FILE_SIZE / BUFFER_SIZE) - 3
+
 //for the response to the upload and download commands
 #define FILENAME_NOT_VALID 	100
 #define OK					101
