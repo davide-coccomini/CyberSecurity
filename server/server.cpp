@@ -47,6 +47,7 @@ class Server {
 		createStore();
 		loadClients();
 		socketActivation();
+		iv = (unsigned char*)malloc(EVP_CIPHER_key_length(EVP_aes_128_cbc()));
 	}
 
 	void loadCertificates(){
@@ -460,8 +461,9 @@ class Server {
 			connectionStatus = CLIENT_CONNECTED;
 
 			// inizializzo iv e counter
-			iv = 0;
-			counter = 0;
+			ivCounter=0;
+			counter=0;
+			createNextIV(ivCounter, iv);
 
 			int ret = keySharing();
 			if(ret<0){
@@ -536,20 +538,20 @@ class Server {
 				for (const auto & entry : fs::directory_iterator(path)){
 					filename = "name: "+string(entry.path().filename())+" -- dimension: "+to_string(fs::file_size(entry.path()))+"\t";
 					os.write(filename.c_str(), filename.size()+1);
-	            		}	
+	            		}
 
 				//leggo dimensione file
-				
-				os.close();				
+
+				os.close();
 				path = "listDirectory/filelist.txt";
 				size_t filelistSize = fs::file_size(path);
-				
+
 				if(filelistSize == 0){
 					os.open("listDirectory/filelist.txt");
 					string text = "No files found on the server.";
 					os.write(text.c_str(), text.size()+1);
 					os.close();
-					filelistSize = fs::file_size(path);		
+					filelistSize = fs::file_size(path);
 				}
 				//invio filelist.txt
 				int ret = sendFile(clientFd, path, filelistSize);
@@ -619,6 +621,7 @@ class Server {
 					int ret = sendSize(clientFd, FILENAME_NOT_VALID);
 					if(ret<0) cout<<"Error in responding to client."<<endl;
 					continue;
+				}
 				int ret = sendSize(clientFd, OK);
 				if(ret<0) cout<<"Error in responding to client."<<endl;
 
@@ -644,7 +647,6 @@ int main(){
 	system("clear");
 	Server s;
 	cout << "The server is ready" <<endl;
-	//s.listen();
 	s.startToRun();
 	return 0;
 

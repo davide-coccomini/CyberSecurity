@@ -60,6 +60,7 @@ public:
             exit(1);
         }
         cout<<"I'm connected to the server"<<endl; //DA RIVEDERE
+        iv = (unsigned char*)malloc(EVP_CIPHER_key_length(EVP_aes_128_cbc()));
     }
 
     void keySharing(){
@@ -339,6 +340,11 @@ public:
 
     void startToRun(){
         cout<<"WELCOME!"<<endl;
+
+        ivCounter=0;
+        counter=0;
+        createNextIV(ivCounter, iv);
+
         helpCommand();
         int ret;
         while(true){
