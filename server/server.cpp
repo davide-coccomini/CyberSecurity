@@ -540,8 +540,8 @@ class Server {
 				string path ="filesDirectory";
 
 				for (const auto & entry : fs::directory_iterator(path)){
-					filename = "name: "+string(entry.path().filename())+" -- dimension: "+to_string(fs::file_size(entry.path()));
-					os.append(filename.c_str(), filename.size()+1);
+					filename = "name: "+string(entry.path().filename())+" -- dimension: "+to_string(fs::file_size(entry.path()))+"\t";
+					os.write(filename.c_str(), filename.size()+1);
 	            		}
 
 				//leggo dimensione file
