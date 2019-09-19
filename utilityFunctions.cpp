@@ -307,7 +307,6 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 
 			// Read the block to be sent
 			is.read((char*)plainText, BUFFER_SIZE);
-
 			// Generate the cipherText
 			EVP_EncryptUpdate(ctx, cipherText, &tmpLength, plainText, BUFFER_SIZE);
 			
@@ -315,8 +314,8 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 			createDigest(cipherText, tmpLength, digest);
 			memcpy(concatenatedText, cipherText, tmpLength);
 			memcpy(concatenatedText+tmpLength, digest, hashSize);
-		
 			
+
 			// Send the block
 			done = send(socket, (void*)&concatenatedText, tmpLength+hashSize, 0);
 			if(done < 0){
@@ -387,6 +386,7 @@ int receiveFile(int socket, string fileName){
 		unsigned char digest[hashSize];
 		unsigned char concatenatedText[BUFFER_SIZE+blockSize+hashSize];
 
+
 		// Calculate the number of blocks to be received
 		int blocks = (fileSize / BUFFER_SIZE);
 		int lastBlockSize = fileSize - (BUFFER_SIZE * blocks);
@@ -427,7 +427,8 @@ int receiveFile(int socket, string fileName){
 
 			// Decrypt message
 			EVP_DecryptUpdate(ctx, plainText, &length, cipherText, BUFFER_SIZE);
-			os.write((char*)plainText, BUFFER_SIZE);
+		
+			os.write((char*)plainText, length);
 			counter++;
 		}
 		// Receive the last block
@@ -457,10 +458,11 @@ int receiveFile(int socket, string fileName){
 		}
 
 		// Decrypt message
-		EVP_DecryptUpdate(ctx, plainText, &length, cipherText, lastBlockSize);
+		EVP_DecryptUpdate(ctx, plainText, &length, cipherText, lastBlockSize+blockSize);
 		EVP_DecryptFinal(ctx, plainText+length, &length);
 		EVP_CIPHER_CTX_free(ctx);
-		os.write((char*)plainText, lastBlockSize);
+
+		os.write((char*)plainText, lastBlockSize+blockSize);
 		
 		ivCounter++;
 		createNextIV(ivCounter, iv);
