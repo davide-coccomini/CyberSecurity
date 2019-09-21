@@ -59,8 +59,6 @@ public:
             cerr<<"Error connecting to the server"<<endl;
             exit(1);
         }
-        cout<<"I'm connected to the server"<<endl; //DA RIVEDERE
-        iv = (unsigned char*)malloc(EVP_CIPHER_key_length(EVP_aes_128_cbc()));
     }
 
     void keySharing(){
@@ -72,7 +70,7 @@ public:
 
         //DH public key of the server
 		const BIGNUM *Yb;
-		DH_get0_key(dhSession, &Yb, NULL); //o BIGNUM* DH_get0_pub_key(DH* dh)
+		DH_get0_key(dhSession, &Yb, NULL);
 
         unsigned char YbBin[SIZE_Y_DH];
 		int ret = BN_bn2bin(Yb, YbBin);
@@ -92,7 +90,6 @@ public:
 			cerr<<"Error in receiving Ya"<<endl;
 			exit(1);
 		}
-        cout<<"Ya ricevuta"<<endl;
         //Calcolo chiave condivisa
         Ya = BN_bin2bn(YaBin, SIZE_Y_DH, NULL);
         if(Ya == NULL){
@@ -135,7 +132,7 @@ public:
         if(!mdctx){
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cout<< "Error: EVP_MD_CTX_new returned NULL"<<endl; //DA RIVEDERE
+            cout<< "Error in signign"<<endl;
             exit(1);
         }
 
@@ -143,7 +140,7 @@ public:
         if(ret == 0){
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cerr << "Error: EVP_SignInit returned " << ret << "\n"; //DA RIVEDERE
+            cout<< "Error in signign"<<endl;
             exit(1);
         }
 
@@ -151,7 +148,7 @@ public:
         if(ret == 0){
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cerr << "Error: EVP_SignUpdate returned " << ret << "\n"; //DA RIVEDERE
+            cout<< "Error in signign"<<endl;
             exit(1);
         }
 
@@ -159,7 +156,7 @@ public:
         if(ret == 0){
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cerr << "Error: EVP_SignFinal returned " << ret << "\n"; //DA RIVEDERE
+            cout<< "Error in signign"<<endl;
             exit(1);
         }
         EVP_MD_CTX_free(mdctx);
@@ -181,12 +178,7 @@ public:
         certSize = i2d_X509(clientCertification, &certBuf); //serializza il certificato
 
         //Composizione di M2
-        /*La dimensione di {<Ya,Yb>B}Kab è in pratica conosciuta
-          dato che, usando RSA con lunghezza della chiave (2048 bit) multipla
-          dei blocchi di AES (16 byte), la la lunghezza della firma prodotta
-          sarà un multiplo di 16 byte. La lungezza totale del messaggio sarà
-          quindi sicuramente lungezza_chiave+lunghezza_blocco
-        */
+
         unsigned char M2[SIZE_Y_DH+cipherLen+certSize];
         for(int i=0; i<SIZE_Y_DH; ++i){
             M2[i]=YbBin[i];
@@ -207,7 +199,7 @@ public:
         if (ret < 0) {
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cerr << "Error sending certificate" <<endl; //DA RIVEDERE
+            cerr << "Error sending certificate" <<endl;
             exit(1);
         }
 
@@ -216,7 +208,7 @@ public:
         if (ret < 0) {
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cerr << "Error sending M2" <<endl;//DA RIVEDERE
+            cerr << "Error sending M2" <<endl;
             exit(1);
         }
 
@@ -225,7 +217,7 @@ public:
 		ret = recv(sd, (void*)&certSize, sizeof(int), MSG_WAITALL);
 		if (ret != (int)sizeof(int)){
 			EVP_PKEY_free(privateKey);
-			cerr<<"Error receiving certificate"<<endl; //DA RIVEDERE
+			cerr<<"Error receiving certificate"<<endl;
             exit(1);
 		}
 		certSize = ntohl(certSize);
@@ -257,19 +249,19 @@ public:
 		X509_STORE_CTX* certCtx = X509_STORE_CTX_new();
 		if(!certCtx) {
 			EVP_PKEY_free(privateKey);
-			cerr << "Error: X509_STORE_CTX_new returned NULL\n" << ERR_error_string(ERR_get_error(), NULL) << "\n";
+			cout<<"Error in verifying certificate"<<endl;
             exit(1);
 		}
 		ret = X509_STORE_CTX_init(certCtx, store, receivedCertificate, NULL);
 		if(ret != 1) {
 			EVP_PKEY_free(privateKey);
-			cerr << "Error: X509_STORE_CTX_init returned " << ret << "\n" << ERR_error_string(ERR_get_error(), NULL) << "\n";
+            cout<<"Error in verifying certificate"<<endl;
             exit(1);
 		}
 		ret = X509_verify_cert(certCtx);
 		if(ret != 1) {
 			EVP_PKEY_free(privateKey);
-			cerr << "Error: X509_verify_cert returned " << ret << "\n" << ERR_error_string(ERR_get_error(), NULL) << "\n";
+            cout<<"Error in verifying certificate"<<endl;
             exit(1);
 		}
 		X509_STORE_CTX_free(certCtx);
@@ -281,7 +273,7 @@ public:
 		free(tempVar);
         if(serverName.compare(SERVER_NAME) != 0){
 		    EVP_PKEY_free(privateKey);
-			cerr << "ERROR: the server io not the legittimate one!" << endl;
+			cout << "ERROR: the server io not the legittimate one!" << endl;
 			exit(1);
 		}
 
@@ -310,28 +302,28 @@ public:
 		if(!mdctx){
 			deleteKeys();
 			EVP_PKEY_free(privateKey);
-			cerr << "Error: EVP_MD_CTX_new returned NULL\n";
+			cout<<"Error in verifying the signature"<<endl;
             exit(1);
 		}
 		ret = EVP_VerifyInit(mdctx, md);
 		if(ret == 0){
 			deleteKeys();
 			EVP_PKEY_free(privateKey);
-			cerr << "Error: EVP_VerifyInit returned " << ret << "\n";
+            cout<<"Error in verifying the signature"<<endl;
             exit(1);
 		}
 		ret = EVP_VerifyUpdate(mdctx, YaConcatYb, 2*SIZE_Y_DH);
 		if(ret == 0){
 			deleteKeys();
 			EVP_PKEY_free(privateKey);
-			cerr << "Error: EVP_VerifyUpdate returned " << ret << "\n";
+            cout<<"Error in verifying the signature"<<endl;
             exit(1);
 		}
 		ret = EVP_VerifyFinal(mdctx, receivedSign, EVP_PKEY_size(privateKey), serverPublicKey);
 		if(ret != 1){
 			deleteKeys();
 			EVP_PKEY_free(privateKey);
-			cerr << "Error: EVP_VerifyFinal returned " << ret << " (invalid signature?)\n";
+            cout<<"Error in verifying the signature"<<endl;
             exit(1);
 		}
 		EVP_MD_CTX_free(mdctx);
@@ -339,6 +331,11 @@ public:
     }
 
     void startToRun(){
+        iv = (unsigned char*)malloc(EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+		if(!iv){
+			cout<<"Error in allocating iv, malloc returned null."<<endl;
+			exit(1);
+		}
         cout<<"WELCOME!"<<endl;
 
         ivCounter=0;
@@ -363,7 +360,7 @@ public:
                 helpCommand();
             }
             else if(typedCommand.compare("quit")==0){
-                //deleteKeys();
+                deleteKeys();
                 X509_STORE_free(store);
                 close(sd);
                 return;
@@ -371,14 +368,14 @@ public:
             else if(typedCommand.compare("list")==0){
                 ret = sendString(sd, typedCommand);
                 if(ret < 0) {
-                    //deleteKeys();
+                    deleteKeys();
                     cerr<<"Error sending command" <<endl;
                     exit(1);
                 }
 
                 ret = receiveFile(sd, "listDirectory/filelist.txt");
                 if(ret < 0) {
-                    //deleteKeys();
+                    deleteKeys();
                     cerr<<"Error getting the file" <<endl;
                     exit(1);
                 }
@@ -389,10 +386,9 @@ public:
                 is.open("listDirectory/filelist.txt");
                 while(!is.eof()){
                     getline(is, fileName);
-                    cout<<fileName;
+                    cout<<fileName<<endl;
                 }
                 is.close();
-                cout<<endl;
                 fs::remove(fs::path("listDirectory/filelist.txt"));
 
             }
@@ -400,7 +396,7 @@ public:
                 string toSend = typedCommand+" "+typedFileName;
                 ret = sendString(sd, toSend);
                 if(ret < 0) {
-                    //deleteKeys();
+                    deleteKeys();
                     cerr<<"Error sending command" <<endl;
                     exit(1);
                 }
@@ -421,7 +417,7 @@ public:
                     typedFileName =  "filesDirectory/" + typedFileName;
                     int ret = receiveFile(sd, typedFileName);
                     if(ret < 0) {
-                        //deleteKeys();
+                        deleteKeys();
                         cerr<<"Error in downloading the file." <<endl;
                         exit(1);
                     }
@@ -465,7 +461,7 @@ public:
                 string toSend = typedCommand+" "+typedFileName;
                 ret = sendString(sd, toSend);
                 if(ret < 0) {
-                    //deleteKeys();
+                    deleteKeys();
                     cerr<<"Error sending command" <<endl;
                     exit(1);
                 }
@@ -479,7 +475,7 @@ public:
                     typedFileName = "filesDirectory/"+typedFileName;
                     ret = sendFile(sd, typedFileName, length);
                     if(ret < 0) {
-                        //deleteKeys();
+                        deleteKeys();
                         cerr<<"Error in sending file." <<endl;
                         exit(1);
                     }
@@ -501,6 +497,7 @@ public:
         cout<<"    download [filename] --> for downloading a file from the server"<<endl;
         cout<<"    quit                --> to end the program"<<endl<<endl;
     }
+    
     bool verifyAndAcquireInput(string s){
         if(s.length()<4){
             cout<<"The command is incorrect."<<endl;

@@ -43,84 +43,14 @@ class Server {
 	public:
 
 	Server(){
-		loadCertificates();
-		createStore();
+		serverCertification = loadCertificate("../certificates/Server_cert.pem");
+		CACertification = loadCertificate("../certificates/CoccominiPulizzi_CA_cert.pem");
+		crl = loadCrl("../certificates/CoccominiPulizzi_CA_crl.pem");
+
+		store = createStore(CACertification, crl);
+
 		loadClients();
 		socketActivation();
-		iv = (unsigned char*)malloc(EVP_CIPHER_key_length(EVP_aes_128_cbc()));
-	}
-
-	void loadCertificates(){
-
-		//apertura file
-		string fileName = "../certificates/Server_cert.pem";
-		FILE * certFile = fopen(fileName.c_str(), "r");
-		if(!certFile){
-			cerr << "Error while opening file "<< fileName << endl;
-			exit(1);
-		}
-		//lettura certificato
-		serverCertification = PEM_read_X509(certFile, NULL, NULL, NULL);
-		fclose(certFile);
-		if(!serverCertification) {
-			cerr << "Error: PEM_read_X509 returned NULL\n"; //DA RIVEDERE
-			exit(1);
-		}
-
-		//apertura file
-		fileName = "../certificates/CoccominiPulizzi_CA_cert.pem";
-		certFile = fopen(fileName.c_str(), "r");
-		if(!certFile){
-			cerr << "Error while opening file "<< fileName << endl;
-			exit(1);
-		}
-		//lettura certificato
-		CACertification = PEM_read_X509(certFile, NULL, NULL, NULL);
-		fclose(certFile);
-		if(!CACertification) {
-			cerr << "Error: PEM_read_X509 returned NULL\n";//DA RIVEDERE
-			exit(1);
-		}
-
-		fileName = "../certificates/CoccominiPulizzi_CA_crl.pem";
-		certFile = fopen(fileName.c_str(), "r");
-		if(!certFile){
-			cerr << "Error while opening file "<< fileName << endl;
-			exit(1);
-		}
-		crl = PEM_read_X509_CRL(certFile, NULL, NULL, NULL);
-		fclose(certFile);
-		if(!crl){
-			cerr << "Error: PEM_read_X509_CRL returned NULL\n"; //DA RIVEDERE
-			exit(1);
-		}
-
-	}
-
-	void createStore(){
-		store = X509_STORE_new();
-		if(!store) {
-			cerr << "ERROR: store not allocated"<<endl;
-			exit(1);
-		}
-
-		int ret = X509_STORE_add_cert(store, CACertification);
-		if(ret != 1) {
-			cerr << "ERROR: error in adding CA certification in the store"<<endl;
-			exit(1);
-		}
-
-		ret = X509_STORE_add_crl(store, crl);
-		if(ret != 1) {
-			cerr << "ERROR: error in adding CRL in the store"<<endl;
-			exit(1);
-		}
-
-		ret = X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK);
-		if(ret != 1) {
-			cerr << "ERROR: error in setting flag in the store"<<endl;
-			exit(1);
-		}
 	}
 
 	void loadClients(){ // Read and save the authorized clients
@@ -138,19 +68,12 @@ class Server {
 
 	}
 
-	void showClients(){ //funzione di test, DA CANCELLARE
-		for(int i = 0; i < (int)authorizedClients.size(); i++){
-			cout<<authorizedClients[i]<<endl;
-		}
-		cout<<"num clients: "<<(int)authorizedClients.size()<<endl;
-	}
-
 	void socketActivation(){
 		socketFd = socket(AF_INET, SOCK_STREAM, 0);
 
 		memset(&serverAddress, 0, sizeof(serverAddress));
 		serverAddress.sin_family = AF_INET;
-		serverAddress.sin_port = htons(SERVER_PORT); //Da vedere
+		serverAddress.sin_port = htons(SERVER_PORT);
 		serverAddress.sin_addr.s_addr = INADDR_ANY;
 
 		int ret = bind(socketFd, (sockaddr*)&serverAddress, sizeof(serverAddress));
@@ -179,7 +102,7 @@ class Server {
 		DH_generate_key(dhSession); //sceglie random la chiave privata e calcola di conseguenza la chiave pubblica
 		//DH public key of the server
 		const BIGNUM *Ya;
-		DH_get0_key(dhSession, &Ya, NULL); //ritorna la chiave pubblica, c'è però un'altra funzione che hanno spiegato in classe che fa la stessa cosa: BIGNUM* DH_get0_pub_key(DH* dh)
+		DH_get0_key(dhSession, &Ya, NULL);
 
 		//M1: invio Ya
 		unsigned char YaBin[SIZE_Y_DH];
@@ -203,7 +126,7 @@ class Server {
 		ret = recv(clientFd, (void*)&certSize, sizeof(int), MSG_WAITALL);
 		if (ret < (int)sizeof(int)){
 			EVP_PKEY_free(privateKey);
-			cerr<<"Error receiving certificate"<<endl; //DA RIVEDERE
+			cerr<<"Error in receiving certificate"<<endl;
 			return -1;
 		}
 		certSize = ntohl(certSize);
@@ -293,7 +216,7 @@ class Server {
         ret = DH_compute_key(Kab, Yb, dhSession);
         if(ret < 0){
             EVP_PKEY_free(privateKey);
-            cout<<"Error in comute shared key Kab"<<endl;
+            cout<<"Error in compute shared key"<<endl;
 			return -1;
         }
 
@@ -319,7 +242,7 @@ class Server {
 		EVP_PKEY *clientPublicKey = X509_get_pubkey(receivedCertificate);
 		if(clientPublicKey == NULL) {
 			EVP_PKEY_free(privateKey);
-			cerr << "Error getting client public key" <<endl;
+			cerr << "Error in the getting client public key" <<endl;
 			return -1;
 		}
 
@@ -336,28 +259,28 @@ class Server {
 		if(!mdctx){
 			deleteKeys();
 			EVP_PKEY_free(privateKey);
-			cerr << "Error: EVP_MD_CTX_new returned NULL\n";
+			cerr << "Error in verifying the client signature";
 			return -1;
 		}
 		ret = EVP_VerifyInit(mdctx, md);
 		if(ret == 0){
 			deleteKeys();
 			EVP_PKEY_free(privateKey);
-			cerr << "Error: EVP_VerifyInit returned " << ret << "\n";
+			cerr << "Error in verifying the client signature \n";
 			return -1;
 		}
 		ret = EVP_VerifyUpdate(mdctx, YaConcatYb, 2*SIZE_Y_DH);
 		if(ret == 0){
 			deleteKeys();
 			EVP_PKEY_free(privateKey);
-			cerr << "Error: EVP_VerifyUpdate returned " << ret << "\n";
+			cerr << "Error in verifying the client signature\n";
 			return -1;
 		}
 		ret = EVP_VerifyFinal(mdctx, receivedSign, EVP_PKEY_size(privateKey), clientPublicKey);
 		if(ret != 1){
 			deleteKeys();
 			EVP_PKEY_free(privateKey);
-			cerr << "Error: EVP_VerifyFinal returned " << ret << " (invalid signature?)\n";
+			cerr << "EError in verifying the client signature\n";
 			return -1;
 		}
 		EVP_MD_CTX_free(mdctx);
@@ -371,7 +294,7 @@ class Server {
         if(!mdctx){
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cout<< "Error: EVP_MD_CTX_new returned NULL"<<endl; //DA MODIFICARE
+            cout<< "Error in signing"<<endl;
             exit(1);
         }
 
@@ -379,7 +302,7 @@ class Server {
         if(ret == 0){
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cerr << "Error: EVP_SignInit returned " << ret << "\n"; //DA MODIFICARE
+            cout<< "Error in signing"<<endl;
             exit(1);
         }
 
@@ -387,7 +310,7 @@ class Server {
         if(ret == 0){
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cerr << "Error: EVP_SignUpdate returned " << ret << "\n"; //DA MODIFICARE
+            cout<< "Error in signing"<<endl;
             exit(1);
         }
 
@@ -395,7 +318,7 @@ class Server {
         if(ret == 0){
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cerr << "Error: EVP_SignFinal returned " << ret << "\n"; //DA MODIFICARE
+            cout<< "Error in signing"<<endl;
             exit(1);
         }
         EVP_MD_CTX_free(mdctx);
@@ -432,7 +355,7 @@ class Server {
         if (ret < 0) {
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cerr << "Error sending certificate" <<endl; //DA RIVEDERE
+            cout << "Error in sending certificate" <<endl;
             exit(1);
         }
 
@@ -441,13 +364,18 @@ class Server {
         if (ret < 0) {
             deleteKeys();
             EVP_PKEY_free(privateKey);
-            cerr << "Error sending M2" <<endl;//DA RIVEDERE
+            cout << "Error sending M2" <<endl;
             exit(1);
         }
 	return 0;
 	}
 
 	void startToRun(){
+		iv = (unsigned char*)malloc(EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+		if(!iv){
+			cout<<"Error in allocating iv, malloc returned null."<<endl;
+			exit(1);
+		}
 		while(true){
 			connectionStatus = CLIENT_DISCONNECTED;
 
@@ -502,6 +430,7 @@ class Server {
 	}
 
 	void handleClient(){
+		cout<<"Client connected"<<endl;
 		while(true){
 			if(counter + 1 > SECURITY_NUMBER){ // Warp around check
 				deleteKeys();
@@ -538,10 +467,9 @@ class Server {
 				string path ="filesDirectory";
 
 				for (const auto & entry : fs::directory_iterator(path)){
-					filename = "name: "+string(entry.path().filename())+" -- dimension: "+to_string(fs::file_size(entry.path()))+"\t";
+					filename = "name: "+string(entry.path().filename())+" -- dimension: "+to_string(fs::file_size(entry.path()))+"\n";
 					os.write(filename.c_str(), filename.size()+1);
-	            		}
-
+	            }
 
 				os.close();
 				path = "listDirectory/filelist.txt";

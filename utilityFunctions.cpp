@@ -106,8 +106,6 @@ int sendSize(int socket, size_t length){
 	return 0;
 }
 
-
-
 int sendString(int socket, string s){
 
 	size_t length = s.size() + 1;
@@ -176,7 +174,6 @@ int checkDigest(unsigned char* receivedDigest, unsigned char* ct, int ctSize){
 		cerr << "The received digest is wrong" << endl;
 		return -1;
 	}
-	//counter++;
 	return 0;
 }
 
@@ -267,7 +264,7 @@ string receiveString(int socket){
 }
 
 int sendFile(int socket, string fileName, uint32_t fileSize){
-	
+
 	ifstream is;
 	is.open(fileName);
 	if(is){
@@ -299,7 +296,7 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 			return -1;
 		}
 		for(size_t i=0; i<(size_t)blocks-1; i++){
-		
+
 			explicit_bzero(cipherText, BUFFER_SIZE+blockSize);
 			explicit_bzero(concatenatedText, hashSize+BUFFER_SIZE+blockSize);
 			explicit_bzero(plainText, BUFFER_SIZE);
@@ -309,12 +306,12 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 			is.read((char*)plainText, BUFFER_SIZE);
 			// Generate the cipherText
 			EVP_EncryptUpdate(ctx, cipherText, &tmpLength, plainText, BUFFER_SIZE);
-			
+
 			// Create the digest and concatenate
 			createDigest(cipherText, tmpLength, digest);
 			memcpy(concatenatedText, cipherText, tmpLength);
 			memcpy(concatenatedText+tmpLength, digest, hashSize);
-			
+
 
 			// Send the block
 			done = send(socket, (void*)&concatenatedText, tmpLength+hashSize, 0);
@@ -344,7 +341,7 @@ int sendFile(int socket, string fileName, uint32_t fileSize){
 		createDigest(cipherText, resultLength, digest);
 		memcpy(concatenatedText, cipherText, resultLength);
 		memcpy(concatenatedText+resultLength, digest, hashSize);
-		
+
 		// Send the block
 		done = send(socket, (void*)&concatenatedText, resultLength+hashSize, 0);
 		if(done < 0){
@@ -403,7 +400,7 @@ int receiveFile(int socket, string fileName){
 			explicit_bzero(plainText, BUFFER_SIZE+blockSize);
 			explicit_bzero(concatenatedText, hashSize+BUFFER_SIZE+blockSize);
 			explicit_bzero(digest, hashSize);
-			
+
 
 			done = recv(socket, (void*)&concatenatedText, BUFFER_SIZE+hashSize, MSG_WAITALL);
 			if(done < 0){
@@ -427,7 +424,7 @@ int receiveFile(int socket, string fileName){
 
 			// Decrypt message
 			EVP_DecryptUpdate(ctx, plainText, &length, cipherText, BUFFER_SIZE);
-		
+
 			os.write((char*)plainText, length);
 			counter++;
 		}
@@ -450,7 +447,7 @@ int receiveFile(int socket, string fileName){
 		// Split the message
 		memcpy(cipherText, concatenatedText,((lastBlockSize/blockSize)+1)*blockSize);
 		memcpy(digest, concatenatedText + ((lastBlockSize/blockSize)+1)*blockSize, hashSize);
-		
+
 		done = checkDigest(digest, cipherText, ((lastBlockSize/blockSize)+1)*blockSize);
 		if(done < 0){
 			cerr << "Error checking digest" << endl;
@@ -458,12 +455,13 @@ int receiveFile(int socket, string fileName){
 		}
 
 		// Decrypt message
-		EVP_DecryptUpdate(ctx, plainText, &length, cipherText, lastBlockSize+blockSize);
+		lastBlockSize = (fileSize>=BUFFER_SIZE)?lastBlockSize+blockSize : lastBlockSize;
+		EVP_DecryptUpdate(ctx, plainText, &length, cipherText, lastBlockSize);
 		EVP_DecryptFinal(ctx, plainText+length, &length);
 		EVP_CIPHER_CTX_free(ctx);
 
 		os.write((char*)plainText, lastBlockSize+blockSize);
-		
+
 		ivCounter++;
 		createNextIV(ivCounter, iv);
 		counter++;
@@ -475,6 +473,7 @@ int receiveFile(int socket, string fileName){
 	os.close();
 	return 0;
 }
+
 X509* loadCertificate(string fileName){
     FILE * certFile = fopen(fileName.c_str(), "r");
     if(!certFile){
